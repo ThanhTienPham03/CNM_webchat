@@ -12,10 +12,12 @@ const authSlice = createSlice({
   reducers: {
     setUser: (state, action) => {
       state.user = action.payload;
+      console.log('User:', state.user);
     },
     setAccessToken: (state, action) => {
       state.accessToken = action.payload;
       Cookies.set('accessToken', action.payload); 
+      console.log('AccessToken:', state.accessToken);
     },
     logout: (state) => {
       state.user = null;
