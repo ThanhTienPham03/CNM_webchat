@@ -3,9 +3,12 @@ import { Container, Row, Col, Form, Button, Alert } from 'react-bootstrap';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
+import { useDispatch } from 'react-redux';
+import { setUser, setAccessToken } from '../../redux/slices/authSlice';
 
 const LoginForm = () => {
     const navigate = useNavigate();
+    const dispatch = useDispatch();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -25,7 +28,10 @@ const LoginForm = () => {
                 // Save token to cookie
                 Cookies.set('accessToken', accessToken, { expires: 7 }); // Expires in 7 days
 
-                localStorage.setItem('accessToken', accessToken);
+                // Dispatch actions to Redux store
+                dispatch(setAccessToken(accessToken));
+                dispatch(setUser(user));
+
                 navigate('/home');
             }
         } catch (err) {
