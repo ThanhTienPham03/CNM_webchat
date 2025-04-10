@@ -3,7 +3,7 @@ import Cookies from 'js-cookie';
 
 const initialState = {
   user: null,
-  token: Cookies.get('token') || null, // Retrieve token from cookies
+  accessToken: Cookies.get('accessToken') || null, 
 };
 
 const authSlice = createSlice({
@@ -13,17 +13,17 @@ const authSlice = createSlice({
     setUser: (state, action) => {
       state.user = action.payload;
     },
-    setToken: (state, action) => {
-      state.token = action.payload;
-      Cookies.set('token', action.payload); // Save token to cookies
+    setAccessToken: (state, action) => {
+      state.accessToken = action.payload;
+      Cookies.set('accessToken', action.payload); 
     },
     logout: (state) => {
       state.user = null;
-      state.token = null;
-      Cookies.remove('token'); // Remove token from cookies
+      state.accessToken = null;
+      Cookies.remove('accessToken'); 
     },
   },
 });
 
-export const { setUser, setToken, logout } = authSlice.actions;
+export const { setUser, setAccessToken, logout } = authSlice.actions;
 export default authSlice.reducer;
