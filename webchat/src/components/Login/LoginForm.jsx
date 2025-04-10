@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Container, Row, Col, Form, Button, Alert } from 'react-bootstrap';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import Cookies from 'js-cookie';
 
 const LoginForm = () => {
     const navigate = useNavigate();
@@ -20,6 +21,10 @@ const LoginForm = () => {
                 const { accessToken, user } = response.data;
                 console.log('Login successful:', user);
                 console.log('Access Token:', accessToken);
+
+                // Save token to cookie
+                Cookies.set('accessToken', accessToken, { expires: 7 }); // Expires in 7 days
+
                 localStorage.setItem('accessToken', accessToken);
                 navigate('/home');
             }
