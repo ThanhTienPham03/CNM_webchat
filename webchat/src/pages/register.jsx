@@ -14,13 +14,13 @@ const Register = () => {
             <div
                 className="card shadow-lg p-4"
                 style={{
-                    maxWidth: '600px', // Tăng chiều rộng khung
+                    maxWidth: '600px', 
                     width: '100%',
                     background: 'linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%)',
-                    borderRadius: '20px', // Bo góc mềm mại
-                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.2)', // Shadow nhẹ
+                    borderRadius: '20px', 
+                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.2)',
                     color: '#333',
-                    padding: '30px', // Padding vừa phải
+                    padding: '30px', 
                     transition: 'transform 0.3s ease',
                 }}
                 onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}

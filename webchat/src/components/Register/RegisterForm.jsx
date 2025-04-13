@@ -49,7 +49,7 @@ const RegisterForm = () => {
             if (response.ok) {
                 setOtpSent(true);
                 setError('');
-                console.log('OTP sent:', data.otp); // For testing purposes
+                console.log('OTP sent:', data.otp); 
             } else {
                 setError(data.message || 'Đăng ký thất bại.');
             }

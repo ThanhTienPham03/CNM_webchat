@@ -1,6 +1,18 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { setAccessToken } from '../redux/slices/authSlice';
 import LoginForm from '../components/Login/LoginForm';
+
 const Login = () => {
+    const navigate = useNavigate();
+    const dispatch = useDispatch();
+
+    const handleLoginSuccess = (token) => {
+        dispatch(setAccessToken(token));
+        navigate('/home'); 
+    };
+
     return (
         <div
             className="register-page d-flex align-items-center justify-content-center min-vh-100"
@@ -12,20 +24,20 @@ const Login = () => {
         >
             <div className="card shadow-lg p-4"
                 style={{
-                    maxWidth: '600px', // Tăng chiều rộng khung
+                    maxWidth: '600px',
                     width: '100%',
                     background: 'linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%)',
-                    borderRadius: '20px', // Bo góc mềm mại
-                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.2)', // Shadow nhẹ
+                    borderRadius: '20px', 
+                    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.2)', 
                     color: '#333',
-                    padding: '30px', // Padding vừa phải
+                    padding: '30px', 
                     transition: 'transform 0.3s ease',
                 }}
                 onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
                 onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
             >
                 
-                <LoginForm />
+                <LoginForm onLoginSuccess={handleLoginSuccess} />
                 <p
                     className="text-center mt-4"
                     style={{
