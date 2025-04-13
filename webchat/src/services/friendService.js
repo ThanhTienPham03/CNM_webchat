@@ -25,3 +25,18 @@ const friendService = {
 };
 
 export default friendService;
+
+const API_BASE_URL_CONVERSATIONS = 'http://localhost:3000/api';
+
+export const addConversation = async (type, participants) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL_CONVERSATIONS}/conversations/add`, {
+      type,
+      participants,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error adding conversation:', error);
+    throw error;
+  }
+};

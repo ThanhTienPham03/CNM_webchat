@@ -237,7 +237,10 @@ const LoginForm = () => {
                                         placeholder="Nhập tuổi"
                                         required
                                         value={userInfo.age}
-                                        onChange={(e) => setUserInfo({ ...userInfo, age: e.target.value })}
+                                        onChange={(e) => {
+                                            const ageValue = parseInt(e.target.value, 10);
+                                            setUserInfo({ ...userInfo, age: isNaN(ageValue) ? '' : ageValue });
+                                        }}
                                         style={{
                                             borderRadius: '8px',
                                             border: '1px solid #ddd',
