@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import "../../assets/styles.css";
 import MessageAPI from "../../api/messageAPI";
+import Picker from "emoji-picker-react";
 
 const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [messages, setMessages] = useState([]);
@@ -10,7 +11,12 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const messagesEndRef = useRef(null);
+
+  const appendMessage = (msg) => {
+    setMessages((prev) => [...prev, msg]);
+  };
 
   useEffect(() => {
     const fetchMessages = async () => {
@@ -45,64 +51,82 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("conversation_id", conversationId);
-    formData.append("sender", userId);
+    if (!newMessage.trim() && !selectedImage && !selectedFile) return;
+
+    const tempId = "temp-" + Date.now();
+    const tempMessage = {
+      id: tempId,
+      sender: userId,
+      content: newMessage,
+      timestamp: new Date().toISOString(),
+      message_type: selectedImage ? "image" : selectedFile ? "file" : "text",
+      sending: true,
+    };
+
+    appendMessage(tempMessage);
+    setNewMessage("");
 
     try {
       let response;
-      if (selectedImage) {
-        formData.append("image", selectedImage);
+      if (selectedImage || selectedFile) {
+        const formData = new FormData();
+        formData.append("conversation_id", conversationId);
+        formData.append("sender", userId);
+        formData.append("file", selectedImage || selectedFile);
+
         response = await MessageAPI.sendFileOrImage(formData, token);
-      } else if (selectedFile) {
-        formData.append("file", selectedFile);
-        response = await MessageAPI.sendFileOrImage(formData, token);
-      } else if (newMessage.trim()) {
+        setSelectedImage(null);
+        setSelectedFile(null);
+      } else {
         const messageData = {
           conversation_id: conversationId,
           sender: userId,
           content: newMessage,
         };
+
         response = await MessageAPI.sendMessage(messageData, token);
-      } else {
-        return;
       }
 
-      if (!response || response.error) {
-        throw new Error(response?.error || "Unknown error occurred");
+      if (response?.id) {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.id === tempId
+              ? {
+                  ...msg,
+                  id: response.id,
+                  timestamp: response.timestamp || new Date().toISOString(),
+                  sending: false,
+                  image_url: response.image_url || null,
+                  file_url: response.file_url || null,
+                }
+              : msg
+          )
+        );
       }
-
-      setMessages((prev) => [...prev, response]);
     } catch (error) {
-      console.error("Error sending:", error);
-      alert("Error sending message or file: " + error.message);
-    } finally {
-      setNewMessage("");
-      setSelectedImage(null);
-      setSelectedFile(null);
+      console.error("Send message error:", error);
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+      alert("Lỗi khi gửi tin nhắn");
     }
   }, [newMessage, selectedImage, selectedFile, conversationId, token, userId]);
 
   const formatTimestamp = (timestamp) => {
-    if (!timestamp || isNaN(new Date(timestamp).getTime())) {
-      return "Invalid Date";
-    }
+    if (!timestamp || isNaN(new Date(timestamp).getTime())) return "";
     try {
       return new Date(timestamp).toLocaleString();
     } catch (error) {
       console.error("Error formatting timestamp:", error);
-      return "Invalid Date";
+      return "";
     }
   };
 
-  const handleRevokeMessage = useCallback(async (messageId) => {
-    if (!token) {
-      alert("Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
-      return;
-    }
-    if (token && conversationId && userId) {
+  const handleRevokeMessage = useCallback(
+    async (messageId) => {
+      if (!token || !conversationId || !userId) {
+        alert("Thiếu thông tin xác thực.");
+        return;
+      }
       try {
-        console.log("Revoke Message Params:", { messageId, userId, conversationId, token });
         const data = { user_id: userId, conversation_id: conversationId };
         await MessageAPI.revokeMessage(messageId, data, token);
         setMessages((prevMessages) =>
@@ -113,13 +137,12 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         alert("Message revoked successfully");
       } catch (error) {
         console.error("Error revoking message:", error);
-        const errorMessage = error.response?.data?.error || error.message || "An unknown error occurred";
+        const errorMessage = error.response?.data?.error || error.message || "Lỗi không xác định";
         alert(errorMessage);
       }
-    } else {
-      alert("Missing token, userId, or conversationId. Cannot revoke message.");
-    }
-  }, [token, conversationId, userId]);
+    },
+    [token, conversationId, userId]
+  );
 
   const handleContextMenu = (e, messageId) => {
     e.preventDefault();
@@ -154,6 +177,26 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     }
   };
 
+  const handleEmojiClick = (emoji) => {
+    setNewMessage((prevMessage) => (prevMessage || "") + emoji);
+  };
+
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker((prev) => !prev);
+  };
+
+  const onEmojiClick = (emojiObject) => {
+    if (emojiObject && emojiObject.emoji) {
+      handleEmojiClick(emojiObject.emoji);
+    }
+    setShowEmojiPicker(false);
+  };
+
+  const handleImageError = (e) => {
+    e.target.onerror = null;
+    e.target.src = "/OIP.png";
+  };
+
   return (
     <div className="d-flex flex-column h-100 border rounded">
       <div className="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
@@ -167,10 +210,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           </button>
         </div>
       </div>
-      <div
-        className="flex-grow-1 p-3 overflow-y-scroll custom-scroll bg-light"
-        style={{ maxHeight: "500px" }}
-      >
+      <div className="flex-grow-1 p-3 overflow-y-scroll custom-scroll bg-light" style={{ maxHeight: "500px" }}>
         {loading ? (
           <p>Loading...</p>
         ) : (
@@ -178,39 +218,41 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
             <div
               key={index}
               className={`d-flex mb-2 ${
-                message.sender === userId
-                  ? "justify-content-end"
-                  : "justify-content-start"
+                message.sender === userId ? "justify-content-end" : "justify-content-start"
               }`}
               onContextMenu={(e) => handleContextMenu(e, message.id)}
             >
               <div
                 className={`p-2 rounded ${
-                  message.sender === userId
-                    ? "bg-primary text-white"
-                    : "bg-secondary text-white"
+                  message.sender === userId ? "bg-primary text-white" : "bg-secondary text-white"
                 }`}
                 style={{ maxWidth: "70%" }}
               >
                 <div>
                   {message.status === "REVOKED" ? (
-                    <p>
-                      <i>Tin nhắn được thu hồi.</i>
-                    </p>
+                    <p><i>Tin nhắn được thu hồi.</i></p>
                   ) : message.image_url ? (
                     <img
                       src={message.image_url}
-                      alt="Sent"
-                      style={{ width: '300px', height: '300px', borderRadius: '20px' }}
+                      alt="Sent Image"
+                      style={{ maxWidth: "100%", maxHeight: "300px", borderRadius: "10px" }}
+                      onError={handleImageError}
                     />
+                  ) : message.message_type === "file" ? (
+                    <a
+                      href={message.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      style={{ color: "blue", textDecoration: "underline" }}
+                    >
+                      {message.content || "Click để mở file"}
+                    </a>
                   ) : (
-                    <p>{message.content}</p>
+                    <p>{message.content} {message.sending && <small className="text-muted"></small>}</p>
                   )}
                 </div>
-                <small
-                  className="text-muted d-block mt-1"
-                  style={{ fontSize: "0.8rem" }}
-                >
+                <small className="text-muted d-block mt-1" style={{ fontSize: "0.8rem" }}>
                   {formatTimestamp(message.timestamp)}
                 </small>
               </div>
@@ -223,15 +265,16 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         <div className="d-flex align-items-center me-2">
           <label className="btn btn-light me-2" title="Attach File">
             📎
-            <input
-              type="file"
-              style={{ display: "none" }}
-              onChange={handleFileInputChange}
-            />
+            <input type="file" style={{ display: "none" }} onChange={handleFileInputChange} />
           </label>
-          <button className="btn btn-light me-2" title="Insert Emoji">
+          <button className="btn btn-light me-2" title="Insert Emoji" onClick={toggleEmojiPicker}>
             😊
           </button>
+          {showEmojiPicker && (
+            <div style={{ position: "absolute", bottom: "60px", left: "20px", zIndex: 1000 }}>
+              <Picker onEmojiClick={onEmojiClick} />
+            </div>
+          )}
         </div>
         <input
           type="text"
@@ -256,10 +299,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
             alt="Preview"
             style={{ maxWidth: "100px", maxHeight: "100px", marginRight: "10px" }}
           />
-          <button
-            className="btn btn-danger btn-sm"
-            onClick={() => setSelectedImage(null)}
-          >
+          <button className="btn btn-danger btn-sm" onClick={() => setSelectedImage(null)}>
             Remove
           </button>
         </div>
@@ -267,10 +307,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       {selectedFile && (
         <div className="p-3 border-top bg-light d-flex align-items-center">
           <p className="mb-0 me-2">{selectedFile.name}</p>
-          <button
-            className="btn btn-danger btn-sm"
-            onClick={() => setSelectedFile(null)}
-          >
+          <button className="btn btn-danger btn-sm" onClick={() => setSelectedFile(null)}>
             Remove
           </button>
         </div>
@@ -283,7 +320,16 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       {contextMenu && (
         <div
           className="context-menu"
-          style={{ top: contextMenu.y, left: contextMenu.x, position: "absolute", zIndex: 1000, background: "white", border: "1px solid #ccc", borderRadius: "4px", boxShadow: "0 2px 5px rgba(0,0,0,0.2)" }}
+          style={{
+            top: contextMenu.y,
+            left: contextMenu.x,
+            position: "absolute",
+            zIndex: 1000,
+            background: "white",
+            border: "1px solid #ccc",
+            borderRadius: "4px",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+          }}
           onMouseLeave={handleCloseContextMenu}
         >
           <button

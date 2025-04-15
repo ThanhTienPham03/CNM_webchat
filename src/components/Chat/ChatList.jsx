@@ -23,6 +23,14 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
     getListConversation();
   }, [userId, accessToken]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      getListConversation();
+    }, 1000); // Refresh every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [userId, accessToken]);
+
   if (loading) return <div>Loading conversations...</div>;
   if (error) return <div>Error: {error}</div>;
   if (!conversations || conversations.length === 0) return <div>No conversations found.</div>;

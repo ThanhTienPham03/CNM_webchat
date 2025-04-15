@@ -132,6 +132,7 @@ const MessageAPI = {
           },
         }
       );
+      console.log("Response data from backend:", response.data);
       return response.data;
     } catch (error) {
       console.error("Error sending file or image:", error);
