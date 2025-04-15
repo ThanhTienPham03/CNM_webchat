@@ -1,5 +1,7 @@
 import axios from "axios";
-const MESSAGES_API = "http://localhost:3000/api/messages";
+
+const MESSAGES_API = "http://localhost:3000/api/messages"; // Replace with your actual API endpoint
+const API_URL = "http://localhost:3000/api"; // Thay thế URL API cố định
 
 const MessageAPI = {
   async fetchMessages(conversation_id, accessToken) {
@@ -13,11 +15,7 @@ const MessageAPI = {
         },
       });
       if (response) {
-        // Normalize the `content` field to ensure it is always a string or a JSON string.
-        const messages = response.data.map((message) => ({
-          ...message,
-          content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
-        }));
+        const messages = response.data;
         return messages;
       }
     } catch (err) {
@@ -29,16 +27,13 @@ const MessageAPI = {
       throw new Error("Invalid data and accessToken");
     }
     try {
-      console.log("Sending message data:", data); // Log data being sent
-      const response = await axios.post(`${MESSAGES_API}/add`, data, {
+      const respone = await axios.post(`${MESSAGES_API}/add`, data, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      console.log("API response:", response.data); // Log API response
-      return response.data;
+      return respone.data;
     } catch (err) {
-      console.error("Error from API:", err.response?.data || err.message); // Log error details
       throw err;
     }
   },
@@ -104,6 +99,43 @@ const MessageAPI = {
       }
     } catch (err) {
       throw err;
+    }
+  },
+  async sendImageAndText(formData, accessToken) {
+    if (!formData || !accessToken) {
+      throw new Error("Invalid formData or accessToken");
+    }
+    try {
+      const respone = await axios.post(`${MESSAGES_API}/sendImage`, formData, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      if (respone) {
+        console.log("upload image and text: ", respone.data);
+        return respone.data;
+      }
+    } catch (err) {
+      throw err;
+    }
+  },
+  async sendFileOrImage(formData, token) {
+    try {
+      const response = await axios.post(
+        `${API_URL}/messages/sendImage`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error sending file or image:", error);
+      throw error;
     }
   },
 };
