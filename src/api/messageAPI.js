@@ -29,13 +29,16 @@ const MessageAPI = {
       throw new Error("Invalid data and accessToken");
     }
     try {
-      const respone = await axios.post(`${MESSAGES_API}/add`, data, {
+      console.log("Sending message data:", data); // Log data being sent
+      const response = await axios.post(`${MESSAGES_API}/add`, data, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      return respone.data;
+      console.log("API response:", response.data); // Log API response
+      return response.data;
     } catch (err) {
+      console.error("Error from API:", err.response?.data || err.message); // Log error details
       throw err;
     }
   },

@@ -34,7 +34,15 @@ export const sendMessage = createAsyncThunk(
 const messageSlice = createSlice({
   name: "messages",
   initialState,
-  reducers: {},
+  reducers: {
+    addMessage: (state, action) => {
+      const newMessage = {
+        ...action.payload,
+        content: action.payload.content || "[No Content]",
+      };
+      state.messages.push(newMessage);
+    },
+  },
   extraReducers: (builder) => {
     builder
       .addCase(fetchMessages.pending, (state) => {
@@ -43,16 +51,30 @@ const messageSlice = createSlice({
       })
       .addCase(fetchMessages.fulfilled, (state, action) => {
         state.loading = false;
-        state.messages = action.payload;
+        state.messages = action.payload.map((message) => ({
+          ...message,
+          content: message.content || "[No Content]",
+        }));
       })
       .addCase(fetchMessages.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
       .addCase(sendMessage.fulfilled, (state, action) => {
-        state.messages.push(action.payload);
+        if (!action.payload || typeof action.payload !== 'object') {
+          console.error("Invalid API response for sendMessage:", action.payload);
+          return;
+        }
+        const newMessage = {
+          ...action.payload,
+          content: action.payload.content || "[No Content]",
+        };
+        console.log("API response for sendMessage:", action.payload);
+        state.messages.push(newMessage);
       });
   },
 });
+
+export const { addMessage } = messageSlice.actions;
 
 export default messageSlice.reducer;

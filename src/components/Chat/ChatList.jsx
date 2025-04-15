@@ -53,9 +53,10 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
                 </small>
               </div>
               <p className="text-muted mb-0" style={{ fontSize: '0.9rem', marginTop: '5px' }}>
-                {/* Handle lastMessage safely */}
                 {typeof conversation.lastMessage === 'object' && conversation.lastMessage !== null
-                  ? (conversation.lastMessage.content || conversation.lastMessage.updated_at || 'No message content')
+                  ? (conversation.lastMessage.status === 'REVOKED'
+                      ? 'Tin nhắn đã được thu hồi'
+                      : (conversation.lastMessage.content || conversation.lastMessage.updated_at || 'No message content'))
                   : (conversation.lastMessage || 'No message available')}
               </p>
             </div>
