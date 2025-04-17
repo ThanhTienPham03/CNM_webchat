@@ -9,22 +9,34 @@ const useCheckUserInfo = () => {
     useEffect(() => {
         const checkUserInfo = async () => {
             const accessToken = Cookies.get('accessToken');
+            console.log('Access Token:', accessToken);
             if (accessToken) {
                 try {
                     const userCookie = Cookies.get('user');
+                    console.log('User Cookie:', userCookie);
                     if (userCookie) {
                         const user = JSON.parse(userCookie);
+                        console.log('Parsed User:', user);
                         const userDetails = await getUserDetailById(user.id, accessToken);
-                        if (userDetails && userDetails.fullname && userDetails.age && userDetails.gender && userDetails.avatar_url) {
-                            navigate('/home'); 
-                        }
+                        console.log('Fetched User Details:', userDetails);
+
+                        // Ensure all required fields are present and valid
+                        if (
+                            userDetails &&
+                            userDetails.fullname &&
+                            userDetails.age &&
+                            (userDetails.gender === true || userDetails.gender === false) &&
+                            userDetails.avatar_url
+                          ) {
+                            navigate('/home');
+                          }
                     }
-                } catch (err) {
-                    console.error('Error checking user info:', err);
+                } catch (error) {
+                    console.error('Error checking user info:', error);
                 }
-            }
         };
         checkUserInfo();
+    };
     }, [navigate]);
 };
 

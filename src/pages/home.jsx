@@ -4,9 +4,7 @@ import ChatBox from "../components/Chat/ChatBox";
 import ChatList from "../components/Chat/ChatList";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "../components/Header/Header";
-import UserProfile from "../components/UserProfile/UserProfile";
-import ConversationApi from "../api/conversationAPI";
-import FriendList from "../components/Friend/FriendList";
+import { useSelector } from 'react-redux';
 
 const Home = () => {
   const [chats, setChats] = useState([]);
@@ -14,6 +12,8 @@ const Home = () => {
   const [selectedConversationName, setSelectedConversationName] = useState(null);
   const userId = localStorage.getItem("user_id");
   const accessToken = localStorage.getItem("access_token");
+
+  const user = useSelector((state) => state.auth.user); // Get user from Redux store
 
   useEffect(() => {
     if (!userId || !accessToken) {
@@ -24,14 +24,14 @@ const Home = () => {
     }
   }, [userId, accessToken]);
 
+  useEffect(() => {
+    // Re-fetch or update UI when user changes
+    console.log("User information updated:", user);
+  }, [user]);
+
   const handleConversationSelect = (conversationId, conversationName) => {
     setSelectedConversationId(conversationId);
     setSelectedConversationName(conversationName);
-  };
-
-  const handleFriendSearch = (searchTerm) => {
-    // Logic to handle friend search
-    console.log("Searching for friend:", searchTerm);
   };
 
   return (
@@ -43,20 +43,6 @@ const Home = () => {
           element={
             <div className="row flex-grow-1 h-100">
               <div className="col-4 border-end overflow-auto">
-                <div className="d-flex align-items-center mb-3">
-                  <input
-                    type="text"
-                    className="form-control me-2"
-                    placeholder="Search friends..."
-                    onChange={(e) => handleFriendSearch(e.target.value)}
-                  />
-                  <button
-                    className="btn btn-primary d-flex align-items-center justify-content-center"
-                    onClick={() => handleFriendSearch(document.querySelector('input[placeholder="Search friends..."]').value)}
-                  >
-                    <i className="bi bi-search"></i>
-                  </button>
-                </div>
                 <ChatList
                   userId={userId}
                   accessToken={accessToken} 

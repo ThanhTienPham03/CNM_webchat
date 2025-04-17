@@ -37,6 +37,46 @@ export const getUserDetailById = async (userId, token) => {
             Authorization: `Bearer ${token}`,
         },
     };
+    console.log('Fetching user detail for userId:', userId);
+    console.log('Using token:', token);
+    console.log('API URL:', `${API_BASE_URL}/api/userDetails/${userId}`);
     const response = await axios.get(`${API_BASE_URL}/api/userDetails/${userId}`, config);
+    const userDetails = response.data;
+
+    // Validate the response structure
+    if (!userDetails) {
+        console.warn('No user details received from API');
+        return null; // Return null if no data is received
+    }
+
+    const { fullname, age, gender, avatar_url } = userDetails;
+
+    if (
+        !fullname ||
+        !age ||
+        typeof gender !== 'boolean' ||
+        !avatar_url
+    ) {
+        console.warn('Incomplete user details received:', userDetails);
+        return { fullname: fullname || '', age: age || 0, gender: typeof gender === 'boolean' ? gender : null, avatar_url: avatar_url || '' };
+    }
+
+    console.log('Validated user details:', userDetails);
+    return userDetails;
+};
+
+export const sendOTP = async (email) => {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/sendOtp`, { email });
     return response.data;
 };
+
+export const verifyOTP = async (email, otp) => {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/verifyOtp`, { email, otp });
+    return response.data.isValid;
+};
+
+export const updatePassword = async (email, newPassword) => {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/updatePassword`, { email, newPassword });
+    return response.data;
+};
+

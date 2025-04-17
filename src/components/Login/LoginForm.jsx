@@ -20,12 +20,21 @@ const LoginForm = () => {
     useEffect(() => {
         const checkUserInfo = async () => {
             const accessToken = Cookies.get('accessToken');
-            if (accessToken) {
+            const userCookie = Cookies.get('user');
+            if (accessToken && userCookie) {
                 try {
-                    const userId = 'userId'; 
-                    const response = await getUserDetailById(userId, accessToken);
-                    if (response) {
+                    const user = JSON.parse(userCookie);
+                    const userDetails = await getUserDetailById(user.id, accessToken);
+                    if (
+                        userDetails &&
+                        userDetails.fullname &&
+                        userDetails.age > 0 &&
+                        (userDetails.gender === true || userDetails.gender === false) &&
+                        userDetails.avatar_url
+                    ) {
                         navigate('/home');
+                    } else {
+                        setIsUserInfoFormVisible(true);
                     }
                 } catch (err) {
                     console.error('Error fetching user info:', err);

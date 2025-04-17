@@ -18,7 +18,6 @@ const authSlice = createSlice({
       state.accessToken = action.payload;
       Cookies.set('accessToken', action.payload); 
       console.log('AccessToken:', state.accessToken);
-      console.log('AccessToken after login:', state.accessToken);
     },
     logout: (state) => {
       state.user = null;

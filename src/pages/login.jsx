@@ -78,7 +78,7 @@ const Login = () => {
                     }}
                 >
                     <a
-                        href="/forgot-password"
+                        href=""
                         className="text-primary"
                         style={{
                             color: '#2575fc',
