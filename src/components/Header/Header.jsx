@@ -7,9 +7,13 @@ import UserInfo from '../UserProfile/UserInfo';
 import { getUserDetailById } from '../../services/userService';
 import Cookies from 'js-cookie';
 import { FaSearch } from 'react-icons/fa'; // Import search icon
+import { useDispatch } from 'react-redux';
+import { logout } from '../../redux/slices/authSlice';
+import axios from 'axios';
 
 const Header = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [showProfile, setShowProfile] = useState(false);
   const [userDetail, setUserDetail] = useState(null);
 
@@ -39,6 +43,26 @@ const Header = () => {
     setShowProfile(false);
   };
 
+  const handleLogout = async () => {
+    try {
+      const accessToken = Cookies.get('accessToken');
+      if (accessToken) {
+        const response = await axios.post('http://localhost:3000/auth/logout', {}, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        console.log('Logout response:', response.data);
+      }
+      dispatch(logout());
+      Cookies.remove('user');
+      Cookies.remove('accessToken');
+      navigate('/');
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+  };
+
   return (
     <div
       className="d-flex align-items-center justify-content-between p-3 text-white shadow-sm"
@@ -64,30 +88,6 @@ const Header = () => {
           >
             {userDetail.fullname || 'Tên người dùng'}
           </h5>
-          {/* <div className="d-flex align-items-center">
-            <FaSearch
-              style={{
-                fontSize: '20px',
-                marginRight: '10px',
-                cursor: 'pointer',
-                color: '#fff',
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Tìm kiếm bạn bè..."
-              style={{
-                padding: '5px 10px',
-                borderRadius: '20px',
-                border: '1px solid #ddd',
-                outline: 'none',
-                width: '200px',
-                transition: 'width 0.3s ease',
-              }}
-              onFocus={(e) => (e.target.style.width = '300px')}
-              onBlur={(e) => (e.target.style.width = '200px')}
-            />
-          </div> */}
         </div>
       )}
       <button
@@ -100,6 +100,7 @@ const Header = () => {
         }}
         onMouseOver={(e) => (e.target.style.backgroundColor = '#4a0e9e')}
         onMouseOut={(e) => (e.target.style.backgroundColor = 'transparent')}
+        onClick={handleLogout}
       >
         Logout
       </button>

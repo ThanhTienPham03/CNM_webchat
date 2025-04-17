@@ -27,10 +27,11 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           const normalizedMessages = fetchedMessages.map((msg) => ({
             ...msg,
             id: msg.id || msg.message_id,
+            sender: msg.sender?.id || msg.sender,
           }));
           setMessages(normalizedMessages);
         } catch (error) {
-          console.error("Error fetching messages:", error);
+          console.error("Lỗi khi tải tin nhắn:", error);
         } finally {
           setLoading(false);
         }
@@ -47,7 +48,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
 
   const handleSendMessage = useCallback(async () => {
     if (!conversationId || !token) {
-      alert("Missing conversationId or token");
+      alert("Thiếu conversationId hoặc token");
       return;
     }
 
@@ -70,13 +71,51 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       let response;
       if (selectedImage || selectedFile) {
         const formData = new FormData();
+
+        // Kiểm tra dữ liệu trước khi gửi
+        if (!conversationId || !userId) {
+          alert("Thiếu conversationId hoặc userId");
+          return;
+        }
+        if (!selectedImage && !selectedFile) {
+          alert("Không có tệp tin nào được chọn");
+          return;
+        }
+
+        // Log chi tiết tệp tin được chọn
+        console.log("Selected Image:", selectedImage);
+        console.log("Selected File:", selectedFile);
+
+        // Kiểm tra tệp tin có hợp lệ không
+        if (selectedImage && !(selectedImage instanceof File)) {
+          alert("Tệp hình ảnh không hợp lệ");
+          return;
+        }
+        if (selectedFile && !(selectedFile instanceof File)) {
+          alert("Tệp tin không hợp lệ");
+          return;
+        }
+
         formData.append("conversation_id", conversationId);
         formData.append("sender", userId);
         formData.append("file", selectedImage || selectedFile);
 
-        response = await MessageAPI.sendFileOrImage(formData, token);
-        setSelectedImage(null);
-        setSelectedFile(null);
+        // Log dữ liệu trước khi gửi
+        console.log("FormData keys:", Array.from(formData.keys()));
+        console.log("FormData values:", Array.from(formData.entries()));
+
+        try {
+          response = await MessageAPI.sendImageMessage(formData, token);
+          setSelectedImage(null);
+          setSelectedFile(null);
+        } catch (error) {
+          console.error("Error sending file or image:", error);
+
+          // Hiển thị thông báo lỗi chi tiết hơn
+          const errorMessage = error.response?.data?.error || error.message || "Lỗi không xác định";
+          alert(`Lỗi khi gửi tệp tin hoặc hình ảnh: ${errorMessage}`);
+          return;
+        }
       } else {
         const messageData = {
           conversation_id: conversationId,
@@ -84,7 +123,16 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           content: newMessage,
         };
 
-        response = await MessageAPI.sendMessage(messageData, token);
+        try {
+          response = await MessageAPI.sendMessage(messageData, token);
+        } catch (error) {
+          console.error("Error sending message:", error);
+
+          // Hiển thị thông báo lỗi chi tiết hơn
+          const errorMessage = error.response?.data?.error || error.message || "Lỗi không xác định";
+          alert(`Lỗi khi gửi tin nhắn: ${errorMessage}`);
+          return;
+        }
       }
 
       if (response?.id) {
@@ -104,7 +152,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         );
       }
     } catch (error) {
-      console.error("Send message error:", error);
+      console.error("Lỗi khi gửi tin nhắn:", error);
       setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
       alert("Lỗi khi gửi tin nhắn");
     }
@@ -192,10 +240,10 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     setShowEmojiPicker(false);
   };
 
-  const handleImageError = (e) => {
-    e.target.onerror = null;
-    e.target.src = "/OIP.png";
-  };
+  // const handleImageError = (e) => {
+  //   e.target.onerror = null;
+  //   e.target.src = "/OIP.png";
+  // };
 
   return (
     <div className="d-flex flex-column h-100 border rounded">
@@ -214,50 +262,49 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         {loading ? (
           <p>Loading...</p>
         ) : (
-          messages.map((message, index) => (
-            <div
-              key={index}
-              className={`d-flex mb-2 ${
-                message.sender === userId ? "justify-content-end" : "justify-content-start"
-              }`}
-              onContextMenu={(e) => handleContextMenu(e, message.id)}
-            >
+          messages.map((message, index) => {
+            const isSender = message.sender?.toString() === userId.toString();
+            return (
               <div
-                className={`p-2 rounded ${
-                  message.sender === userId ? "bg-primary text-white" : "bg-secondary text-white"
-                }`}
-                style={{ maxWidth: "70%" }}
+                key={index}
+                className={`d-flex mb-2 ${isSender ? "justify-content-end" : "justify-content-start"}`}
+                onContextMenu={(e) => handleContextMenu(e, message.id)}
               >
-                <div>
-                  {message.status === "REVOKED" ? (
-                    <p><i>Tin nhắn được thu hồi.</i></p>
-                  ) : message.image_url ? (
-                    <img
-                      src={message.image_url}
-                      alt="Sent Image"
-                      style={{ maxWidth: "100%", maxHeight: "300px", borderRadius: "10px" }}
-                      onError={handleImageError}
-                    />
-                  ) : message.message_type === "file" ? (
-                    <a
-                      href={message.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download
-                      style={{ color: "blue", textDecoration: "underline" }}
-                    >
-                      {message.content || "Click để mở file"}
-                    </a>
-                  ) : (
-                    <p>{message.content} {message.sending && <small className="text-muted"></small>}</p>
-                  )}
+                <div
+                  className={`p-2 rounded ${isSender ? "bg-primary text-white" : "bg-secondary text-white"}`}
+                  style={{ maxWidth: "70%" }}
+                >
+                  <div>
+                    {message.status === "REVOKED" ? (
+                      <p><i>Tin nhắn được thu hồi.</i></p>
+                    ) : message.image_url ? (
+                      <img
+                        src={message.image_url}
+                        alt="Sent Image"
+                        style={{ maxWidth: "100%", maxHeight: "300px", borderRadius: "10px" }}
+                        // onError={handleImageError}
+                      />
+                    ) : message.message_type === "file" ? (
+                      <a
+                        href={message.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                        style={{ color: "blue", textDecoration: "underline" }}
+                      >
+                        {message.content || "Click để mở file"}
+                      </a>
+                    ) : (
+                      <p>{message.content} {message.sending && <small className="text-muted">...</small>}</p>
+                    )}
+                  </div>
+                  <small className="text-muted d-block mt-1" style={{ fontSize: "0.8rem" }}>
+                    {formatTimestamp(message.timestamp)}
+                  </small>
                 </div>
-                <small className="text-muted d-block mt-1" style={{ fontSize: "0.8rem" }}>
-                  {formatTimestamp(message.timestamp)}
-                </small>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>

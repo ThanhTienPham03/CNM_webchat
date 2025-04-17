@@ -1,7 +1,6 @@
 import axios from "axios";
 
 const MESSAGES_API = "http://localhost:3000/api/messages"; // Replace with your actual API endpoint
-const API_URL = "http://localhost:3000/api"; // Thay thế URL API cố định
 
 const MessageAPI = {
   async fetchMessages(conversation_id, accessToken) {
@@ -27,12 +26,12 @@ const MessageAPI = {
       throw new Error("Invalid data and accessToken");
     }
     try {
-      const respone = await axios.post(`${MESSAGES_API}/add`, data, {
+      const response = await axios.post(`${MESSAGES_API}/add`, data, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      return respone.data;
+      return response.data;
     } catch (err) {
       throw err;
     }
@@ -42,7 +41,7 @@ const MessageAPI = {
       throw new Error("Invalid message_id, data or accessToken");
     }
     try {
-      const res = await axios.put(
+      const response = await axios.put(
         `${MESSAGES_API}/${message_id}/update`,
         data,
         {
@@ -51,11 +50,7 @@ const MessageAPI = {
           },
         }
       );
-      if (res) {
-        const data = res.data;
-        console.log("update message: ", data);
-        return data;
-      }
+      return response.data;
     } catch (err) {
       throw err;
     }
@@ -65,7 +60,7 @@ const MessageAPI = {
       throw new Error("Invalid message_id, data or accessToken");
     }
     try {
-      const res = await axios.put(
+      const response = await axios.put(
         `${MESSAGES_API}/${message_id}/revoke`,
         data,
         {
@@ -74,11 +69,7 @@ const MessageAPI = {
           },
         }
       );
-      if (res) {
-        const revokedMessage = res.data;
-        console.log("revoke message: ", revokedMessage);
-        return revokedMessage;
-      }
+      return response.data;
     } catch (err) {
       throw err;
     }
@@ -88,55 +79,29 @@ const MessageAPI = {
       throw new Error("Invalid message_id, data or accessToken");
     }
     try {
-      const res = await axios.delete(`${MESSAGES_API}/${message_id}`, {
+      const response = await axios.delete(`${MESSAGES_API}/${message_id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         data: data,
       });
-      if (res) {
-        const result = res.data;
-        console.log("Delete message: ", result);
-        return result;
-      }
+      return response.data;
     } catch (err) {
       throw err;
     }
   },
-  async sendImageAndText(formData, accessToken) {
+  async sendImageMessage(formData, accessToken) {
     if (!formData || !accessToken) {
       throw new Error("Invalid formData or accessToken");
     }
     try {
-      const respone = await axios.post(`${MESSAGES_API}/sendImage`, formData, {
+      const response = await axios.post(`${MESSAGES_API}/sendImage`, formData, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "multipart/form-data",
         },
       });
-      if (respone) {
-        console.log("upload image and text: ", respone.data);
-        return respone.data;
-      }
+      return response.data;
     } catch (err) {
       throw err;
-    }
-  },
-  async sendFileOrImage(formData, token) {
-    try {
-      const response = await axios.post(
-        `${API_URL}/messages/sendImage`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
-      console.log("Response data from backend:", response.data);
-      return response.data;
-    } catch (error) {
-      console.error("Error sending file or image:", error);
-      throw error;
     }
   },
 };
