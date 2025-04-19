@@ -229,7 +229,7 @@ const UserProfile = ({ userId }) => {
             <Button variant="secondary" onClick={() => setEditing(false)}>
               <FaTimes className="me-1" /> Hủy
             </Button>
-            <Button variant="warning" onClick={() => navigate('/reset-password')}>
+            <Button variant="warning" onClick={() => navigate('/changePassword')}>
               Đổi mật khẩu
             </Button>
           </div>

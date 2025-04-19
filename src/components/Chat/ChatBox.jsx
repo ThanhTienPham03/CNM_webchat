@@ -2,368 +2,233 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import "../../assets/styles.css";
 import MessageAPI from "../../api/messageAPI";
 import Picker from "emoji-picker-react";
+import axios from "axios";
 
 const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [newMessage, setNewMessage] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedDocument, setSelectedDocument] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [participants, setParticipants] = useState([]);
+
   const messagesEndRef = useRef(null);
+  const baseURL = "http://localhost:3000";
 
-  const appendMessage = (msg) => {
-    setMessages((prev) => [...prev, msg]);
-  };
+  const fetchMessages = useCallback(async () => {
+    if (!conversationId || !token) return;
+    setLoading(true);
+    try {
+      const data = await MessageAPI.fetchMessages(conversationId, token);
+      setMessages(data);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId, token]);
 
-  useEffect(() => {
-    const fetchMessages = async () => {
-      if (conversationId && token) {
-        setLoading(true);
-        try {
-          const fetchedMessages = await MessageAPI.fetchMessages(conversationId, token);
-          const normalizedMessages = fetchedMessages.map((msg) => ({
-            ...msg,
-            id: msg.id || msg.message_id,
-            sender: msg.sender?.id || msg.sender,
-          }));
-          setMessages(normalizedMessages);
-        } catch (error) {
-          console.error("Lỗi khi tải tin nhắn:", error);
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-    fetchMessages();
+  const fetchParticipants = useCallback(async () => {
+    if (!conversationId || !token) return;
+    try {
+      const res = await axios.get(`${baseURL}/api/conversations/${conversationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setParticipants(res.data.participants);
+    } catch (error) {
+      console.error("Error fetching participants:", error);
+    }
   }, [conversationId, token]);
 
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
+    fetchMessages();
+    fetchParticipants();
+  }, [fetchMessages, fetchParticipants]);
 
-  const handleSendMessage = useCallback(async () => {
-    if (!conversationId || !token) {
-      alert("Thiếu conversationId hoặc token");
+  const handleSend = async () => {
+    if (!newMessage.trim() && !selectedImage && !selectedDocument) {
+      alert("Vui lòng nhập nội dung gửi");
       return;
     }
-
-    if (!newMessage.trim() && !selectedImage && !selectedFile) return;
-
-    const tempId = "temp-" + Date.now();
-    const tempMessage = {
-      id: tempId,
-      sender: userId,
-      content: newMessage,
-      timestamp: new Date().toISOString(),
-      message_type: selectedImage ? "image" : selectedFile ? "file" : "text",
-      sending: true,
-    };
-
-    appendMessage(tempMessage);
-    setNewMessage("");
-
+  
     try {
       let response;
-      if (selectedImage || selectedFile) {
+      const receivers = participants.filter((id) => id !== userId);
+      if (selectedImage || selectedDocument) {
         const formData = new FormData();
-
-        // Kiểm tra dữ liệu trước khi gửi
-        if (!conversationId || !userId) {
-          alert("Thiếu conversationId hoặc userId");
-          return;
-        }
-        if (!selectedImage && !selectedFile) {
-          alert("Không có tệp tin nào được chọn");
-          return;
-        }
-
-        // Log chi tiết tệp tin được chọn
-        console.log("Selected Image:", selectedImage);
-        console.log("Selected File:", selectedFile);
-
-        // Kiểm tra tệp tin có hợp lệ không
-        if (selectedImage && !(selectedImage instanceof File)) {
-          alert("Tệp hình ảnh không hợp lệ");
-          return;
-        }
-        if (selectedFile && !(selectedFile instanceof File)) {
-          alert("Tệp tin không hợp lệ");
-          return;
-        }
-
         formData.append("conversation_id", conversationId);
         formData.append("sender", userId);
-        formData.append("file", selectedImage || selectedFile);
-
-        // Log dữ liệu trước khi gửi
-        console.log("FormData keys:", Array.from(formData.keys()));
-        console.log("FormData values:", Array.from(formData.entries()));
-
-        try {
-          response = await MessageAPI.sendImageMessage(formData, token);
-          setSelectedImage(null);
-          setSelectedFile(null);
-        } catch (error) {
-          console.error("Error sending file or image:", error);
-
-          // Hiển thị thông báo lỗi chi tiết hơn
-          const errorMessage = error.response?.data?.error || error.message || "Lỗi không xác định";
-          alert(`Lỗi khi gửi tệp tin hoặc hình ảnh: ${errorMessage}`);
-          return;
+        receivers.forEach((id) => {
+          formData.append("receivers[]", id);
+        });
+        if (newMessage) {
+          formData.append("content", newMessage);
         }
+        if (selectedImage) {
+          formData.append("file", selectedImage); // Thêm trực tiếp đối tượng File
+        } else if (selectedDocument) {
+          formData.append("file", selectedDocument); // Thêm trực tiếp đối tượng File
+        }
+  
+        // Gỡ lỗi: Ghi lại chi tiết các khóa và giá trị của FormData
+        for (let pair of formData.entries()) {
+          if (pair[1] instanceof File) {
+            console.log(`${pair[0]}: Tên tệp - ${pair[1].name}, kích thước - ${pair[1].size}, loại - ${pair[1].type}`);
+          } else {
+            console.log(`${pair[0]}: ${pair[1]}`);
+          }
+        }
+  
+        response = await MessageAPI.sendImageAndText(formData, token);
+        setMessages((prev) => [...prev, response]);
       } else {
-        const messageData = {
+        const data = {
           conversation_id: conversationId,
           sender: userId,
+          receivers,
           content: newMessage,
+          type: "TEXT",
         };
-
-        try {
-          response = await MessageAPI.sendMessage(messageData, token);
-        } catch (error) {
-          console.error("Error sending message:", error);
-
-          // Hiển thị thông báo lỗi chi tiết hơn
-          const errorMessage = error.response?.data?.error || error.message || "Lỗi không xác định";
-          alert(`Lỗi khi gửi tin nhắn: ${errorMessage}`);
-          return;
-        }
+        await MessageAPI.sendMessage(data, token);
+        fetchMessages();
       }
-
-      if (response?.id) {
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg.id === tempId
-              ? {
-                  ...msg,
-                  id: response.id,
-                  timestamp: response.timestamp || new Date().toISOString(),
-                  sending: false,
-                  image_url: response.image_url || null,
-                  file_url: response.file_url || null,
-                }
-              : msg
-          )
-        );
-      }
+  
+      setNewMessage("");
+      setSelectedImage(null);
+      setSelectedDocument(null);
     } catch (error) {
-      console.error("Lỗi khi gửi tin nhắn:", error);
-      setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
-      alert("Lỗi khi gửi tin nhắn");
+      console.error("Gửi thất bại:", error);
+      alert("Gửi tin nhắn thất bại. Vui lòng thử lại.");
     }
-  }, [newMessage, selectedImage, selectedFile, conversationId, token, userId]);
+  };
+  
+
+  const handleRevokeMessage = async (messageId) => {
+    try {
+      await MessageAPI.revokeMessage(messageId, { user_id: userId, conversation_id: conversationId }, token);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? { ...msg, status: "REVOKED", content: "", image_url: null, file_url: null }
+            : msg
+        )
+      );
+    } catch (error) {
+      console.error("Error revoking message:", error);
+      alert(error?.response?.data?.error || error.message || "Unknown error");
+    }
+  };
 
   const formatTimestamp = (timestamp) => {
-    if (!timestamp || isNaN(new Date(timestamp).getTime())) return "";
-    try {
-      return new Date(timestamp).toLocaleString();
-    } catch (error) {
-      console.error("Error formatting timestamp:", error);
-      return "";
-    }
+    return new Date(timestamp).toLocaleString();
   };
 
-  const handleRevokeMessage = useCallback(
-    async (messageId) => {
-      if (!token || !conversationId || !userId) {
-        alert("Thiếu thông tin xác thực.");
-        return;
-      }
-      try {
-        const data = { user_id: userId, conversation_id: conversationId };
-        await MessageAPI.revokeMessage(messageId, data, token);
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg.id === messageId ? { ...msg, status: "REVOKED" } : msg
-          )
-        );
-        alert("Message revoked successfully");
-      } catch (error) {
-        console.error("Error revoking message:", error);
-        const errorMessage = error.response?.data?.error || error.message || "Lỗi không xác định";
-        alert(errorMessage);
-      }
-    },
-    [token, conversationId, userId]
-  );
-
-  const handleContextMenu = (e, messageId) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, messageId });
-  };
-
-  const handleCloseContextMenu = () => {
-    setContextMenu(null);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    } else {
-      setIsTyping(true);
-      setTimeout(() => setIsTyping(false), 2000);
-    }
-  };
-
-  const handleFileInputChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const fileType = file.type;
-      if (fileType.startsWith("image/")) {
-        setSelectedImage(file);
-        setSelectedFile(null);
-      } else {
-        setSelectedFile(file);
-        setSelectedImage(null);
-      }
-    }
-  };
-
-  const handleEmojiClick = (emoji) => {
-    setNewMessage((prevMessage) => (prevMessage || "") + emoji);
-  };
-
-  const toggleEmojiPicker = () => {
-    setShowEmojiPicker((prev) => !prev);
-  };
-
-  const onEmojiClick = (emojiObject) => {
-    if (emojiObject && emojiObject.emoji) {
-      handleEmojiClick(emojiObject.emoji);
-    }
+  const onEmojiClick = (emoji) => {
+    if (emoji?.emoji) setNewMessage((prev) => prev + emoji.emoji);
     setShowEmojiPicker(false);
   };
 
-  // const handleImageError = (e) => {
-  //   e.target.onerror = null;
-  //   e.target.src = "/OIP.png";
-  // };
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   return (
     <div className="d-flex flex-column h-100 border rounded">
       <div className="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
-        <h5 className="mb-0">{conversationName || "Chat"}</h5>
-        <div>
-          <button className="btn btn-outline-info me-2" title="Voice Call">
-            <i className="bi bi-telephone"></i>
-          </button>
-          <button className="btn btn-outline-info" title="Video Call">
-            <i className="bi bi-camera-video-fill"></i>
-          </button>
-        </div>
+        <h5 className="mb-0">{conversationName || "Chọn cuộc trò chuyện"}</h5>
       </div>
+
       <div className="flex-grow-1 p-3 overflow-y-scroll custom-scroll bg-light" style={{ maxHeight: "500px" }}>
         {loading ? (
           <p>Loading...</p>
         ) : (
-          messages.map((message, index) => {
-            const isSender = message.sender?.toString() === userId.toString();
-            return (
+          messages.map((msg, idx) => (
+            <div
+              key={msg.id || idx} // Ensure a unique key for each message
+              className={`d-flex mb-2 ${msg.sender === userId ? "justify-content-end" : "justify-content-start"}`}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (msg.id) { // Check if msg.id exists
+                  setContextMenu({ x: e.clientX, y: e.clientY, messageId: msg.id });
+                }
+              }}
+              onClick={(e) => {
+                if (msg.id) { // Check if msg.id exists
+                  console.log(`Message ID: ${msg.id}`);
+                  setContextMenu({ x: e.clientX, y: e.clientY, messageId: msg.id });
+                }
+              }}
+            >
               <div
-                key={index}
-                className={`d-flex mb-2 ${isSender ? "justify-content-end" : "justify-content-start"}`}
-                onContextMenu={(e) => handleContextMenu(e, message.id)}
+                className={`p-2 rounded ${msg.sender === userId ? "bg-primary text-white" : "bg-secondary text-white"}`}
+                style={{ maxWidth: "70%", backgroundColor: "#f0f8ff" }}
               >
-                <div
-                  className={`p-2 rounded ${isSender ? "bg-primary text-white" : "bg-secondary text-white"}`}
-                  style={{ maxWidth: "70%" }}
-                >
-                  <div>
-                    {message.status === "REVOKED" ? (
-                      <p><i>Tin nhắn được thu hồi.</i></p>
-                    ) : message.image_url ? (
-                      <img
-                        src={message.image_url}
-                        alt="Sent Image"
-                        style={{ maxWidth: "100%", maxHeight: "300px", borderRadius: "10px" }}
-                        // onError={handleImageError}
-                      />
-                    ) : message.message_type === "file" ? (
-                      <a
-                        href={message.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        style={{ color: "blue", textDecoration: "underline" }}
-                      >
-                        {message.content || "Click để mở file"}
-                      </a>
-                    ) : (
-                      <p>{message.content} {message.sending && <small className="text-muted">...</small>}</p>
-                    )}
-                  </div>
-                  <small className="text-muted d-block mt-1" style={{ fontSize: "0.8rem" }}>
-                    {formatTimestamp(message.timestamp)}
-                  </small>
-                </div>
+                {msg.status === "REVOKED" ? (
+                  <i><p className="mb-0">Tin nhắn đã bị thu hồi.</p></i>
+                ) : msg.image_url ? (
+                  <img src={msg.image_url} alt="img" style={{ maxWidth: "100%", maxHeight: "300px", borderRadius: "10px" }} />
+                ) : msg.message_type === "file" ? (
+                  <a href={msg.file_url} target="_blank" rel="noreferrer" download>
+                    {msg.content || "Click để tải file"}
+                  </a>
+                ) : (
+                  <p className="mb-0">{msg.content}</p>
+                )}
+                <small className="text-muted d-block mt-1" style={{ fontSize: "0.8rem" }}>
+                  {formatTimestamp(msg.timestamp)}
+                </small>
               </div>
-            );
-          })
+            </div>
+          ))
         )}
         <div ref={messagesEndRef} />
       </div>
-      <div className="d-flex p-3 border-top bg-white">
-        <div className="d-flex align-items-center me-2">
-          <label className="btn btn-light me-2" title="Attach File">
-            📎
-            <input type="file" style={{ display: "none" }} onChange={handleFileInputChange} />
-          </label>
-          <button className="btn btn-light me-2" title="Insert Emoji" onClick={toggleEmojiPicker}>
-            😊
-          </button>
-          {showEmojiPicker && (
-            <div style={{ position: "absolute", bottom: "60px", left: "20px", zIndex: 1000 }}>
-              <Picker onEmojiClick={onEmojiClick} />
-            </div>
-          )}
-        </div>
+
+      <div className="p-3 border-top bg-light d-flex align-items-center position-relative">
+        <label className="btn btn-light me-2">
+          <i className="bi bi-image"></i>
+          <input type="file" accept="image/*" hidden onChange={(e) => setSelectedImage(e.target.files[0])} />
+        </label>
+        <label className="btn btn-light me-2">
+          <i className="bi bi-file-earmark-code-fill"></i>
+          <input type="file" hidden onChange={(e) => setSelectedDocument(e.target.files[0])} />
+        </label>
+        <button className="btn btn-light me-2" onClick={() => setShowEmojiPicker((prev) => !prev)}>😊</button>
+        {showEmojiPicker && (
+          <div style={{ position: "absolute", bottom: "60px", left: "20px", zIndex: 1000 }}>
+            <Picker onEmojiClick={onEmojiClick} />
+          </div>
+        )}
         <input
           type="text"
           className="form-control me-2"
           placeholder="Type a message..."
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-        <button
-          className="btn btn-primary"
-          onClick={handleSendMessage}
-          disabled={!newMessage.trim() && !selectedImage && !selectedFile}
-        >
-          <i className="bi bi-send"></i>
-        </button>
+        <button className="btn btn-primary" onClick={handleSend} disabled={!conversationId}>Send</button>
       </div>
-      {selectedImage && (
+
+      {(selectedImage || selectedDocument) && (
         <div className="p-3 border-top bg-light d-flex align-items-center">
-          <img
-            src={URL.createObjectURL(selectedImage)}
-            alt="Preview"
-            style={{ maxWidth: "100px", maxHeight: "100px", marginRight: "10px" }}
-          />
-          <button className="btn btn-danger btn-sm" onClick={() => setSelectedImage(null)}>
-            Remove
-          </button>
+          {selectedImage && (
+            <>
+              <img src={URL.createObjectURL(selectedImage)} alt="Preview" style={{ maxWidth: "100px", marginRight: "10px" }} />
+              <button className="btn btn-danger btn-sm" onClick={() => setSelectedImage(null)}>Remove</button>
+            </>
+          )}
+          {selectedDocument && (
+            <>
+              <span className="me-2">{selectedDocument.name}</span>
+              <button className="btn btn-danger btn-sm" onClick={() => setSelectedDocument(null)}>Remove</button>
+            </>
+          )}
         </div>
       )}
-      {selectedFile && (
-        <div className="p-3 border-top bg-light d-flex align-items-center">
-          <p className="mb-0 me-2">{selectedFile.name}</p>
-          <button className="btn btn-danger btn-sm" onClick={() => setSelectedFile(null)}>
-            Remove
-          </button>
-        </div>
-      )}
-      {isTyping && (
-        <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-          Someone is typing...
-        </div>
-      )}
+
       {contextMenu && (
         <div
           className="context-menu"
@@ -372,21 +237,20 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
             left: contextMenu.x,
             position: "absolute",
             zIndex: 1000,
-            background: "white",
+            background: "#fff",
             border: "1px solid #ccc",
             borderRadius: "4px",
-            boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
           }}
-          onMouseLeave={handleCloseContextMenu}
+          onMouseLeave={() => setContextMenu(null)}
         >
           <button
-            className="btn btn-link"
+            className="dropdown-item"
             onClick={() => {
               handleRevokeMessage(contextMenu.messageId);
-              handleCloseContextMenu();
+              setContextMenu(null);
             }}
           >
-            Thu hồi tin nhắn
+            Revoke Message
           </button>
         </div>
       )}

@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import avatar from '../../assets/react.svg'; // Import hình ảnh avatar
 import { useNavigate } from 'react-router-dom';
 import UserProfile from '../UserProfile/UserProfile';
 import UserInfo from '../UserProfile/UserInfo';
 import { getUserDetailById } from '../../services/userService';
 import Cookies from 'js-cookie';
-import { FaSearch } from 'react-icons/fa'; // Import search icon
+import { FaSearch } from 'react-icons/fa';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../redux/slices/authSlice';
 import axios from 'axios';
@@ -14,14 +13,14 @@ import axios from 'axios';
 const Header = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const [showProfile, setShowProfile] = useState(false); // State để hiển thị form user profile
+  const [showProfile, setShowProfile] = useState(false);
   const [userDetail, setUserDetail] = useState(null);
 
-  const user = useSelector((state) => state.auth.user); // Get user from Redux store
+  const user = useSelector((state) => state.auth.user); 
 
   useEffect(() => {
     if (user) {
-      setUserDetail(user); // Update userDetail when Redux user changes
+      setUserDetail(user); 
     }
   }, [user]);
 
@@ -57,11 +56,11 @@ const Header = () => {
     } else if (!userDetail.id) {
       console.warn('userDetail.id is missing. Cannot show profile.');
     }
-    setShowProfile(true); // Hiển thị form user profile
+    setShowProfile(true); 
   };
 
   const handleCloseProfile = () => {
-    setShowProfile(false); // Đóng form user profile
+    setShowProfile(false); 
   };
 
   const handleLogout = async () => {
@@ -85,73 +84,37 @@ const Header = () => {
   };
 
   const handleUserUpdate = (updatedUser) => {
-    setUserDetail(updatedUser); // Update the userDetail state with the new data
-    // Optionally, dispatch an action to update the Redux store
+    setUserDetail(updatedUser); 
     dispatch({ type: 'auth/updateUser', payload: updatedUser });
   };
 
   return (
-    <div
-      className="d-flex align-items-center justify-content-between p-3 text-white shadow-sm"
-      style={{ backgroundColor: '#6a11cb', borderBottom: '2px solid #4a0e9e' }}
-    >
+    <div className="d-flex align-items-center justify-content-between p-3 text-white shadow-sm" style={{ backgroundColor: '#6a11cb', borderBottom: '2px solid #4a0e9e' }} >
       {userDetail && (
         <div className="d-flex align-items-center">
-          <img
-            src={userDetail.avatar_url || 'default-avatar.png'}
-            alt="User Avatar"
-            className="rounded-circle me-3"
-            style={{
-              width: '50px',
-              height: '50px',
-              objectFit: 'cover',
-              cursor: 'pointer',
-              border: '2px solid #fff',
-            }}
-            onClick={handleAvatarClick} // Thêm sự kiện onClick
-          />
-          <h5
-            className="mb-0"
-            style={{ fontWeight: 'bold', fontSize: '18px', color: '#fff', marginRight: '15px' }}
-          >
+          <img src={userDetail.avatar_url || 'default-avatar.png'} alt="User Avatar" className="rounded-circle me-3" style={{ width: '50px', height: '50px',  objectFit: 'cover',  cursor: 'pointer',  border: '2px solid #fff', }} onClick={handleAvatarClick} />
+          <h5 className="mb-0" style={{ fontWeight: 'bold', fontSize: '18px', color: '#fff', marginRight: '15px' }} >
             {userDetail.fullname || 'Tên người dùng'}
           </h5>
         </div>
       )}
-      <button
-        className="btn btn-outline-light btn-sm"
-        style={{
-          borderRadius: '20px',
-          padding: '5px 15px',
-          fontWeight: 'bold',
-          transition: 'background-color 0.3s ease',
-        }}
-        onMouseOver={(e) => (e.target.style.backgroundColor = '#4a0e9e')}
-        onMouseOut={(e) => (e.target.style.backgroundColor = 'transparent')}
-        onClick={handleLogout}
-      >
-        Logout
-      </button>
+      <div className="d-flex align-items-center">
+        <button className="btn btn-outline-light btn-sm me-2" style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease' }}>
+          <i className="bi bi-chat-text-fill"></i>
+        </button>
+        <button className="btn btn-outline-light btn-sm me-2" style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease' }}>
+          <i className="bi bi-people-fill"></i>
+        </button>
+        <button className="btn btn-outline-light btn-sm me-2" style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease' }}>
+          <i className="bi bi-bell-fill"></i>
+        </button>
+        <button className="btn btn-outline-light btn-sm"  style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease', }} onMouseOver={(e) => (e.target.style.backgroundColor = 'red')} onMouseOut={(e) => (e.target.style.backgroundColor = 'transparent')} onClick={handleLogout} >
+        <i class="bi bi-box-arrow-right"></i>
+        </button>
+      </div>
       {showProfile && userDetail?.user_id && (
-        <div
-          style={{
-            position: 'fixed', // Đặt form ở giữa màn hình
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: 'white',
-            border: '1px solid #ccc',
-            borderRadius: '8px',
-            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-            zIndex: 1000,
-            padding: '20px',
-          }}
-        >
-          <button
-            className="btn btn-danger mt-3"
-            onClick={handleCloseProfile}
-            style={{ position: 'absolute', top: '5px', right: '10px', fontSize: '0.8rem', padding: '2px 6px' }}
-          >
+        <div style={{ position: 'fixed',top: '50%',left: '50%',transform: 'translate(-50%, -50%)',background: 'white',border: '1px solid #ccc', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)', zIndex: 100, padding: '20px',}}>
+          <button className="btn btn-danger mt-3" onClick={handleCloseProfile} style={{ position: 'absolute', top: '5px', right: '10px', fontSize: '0.8rem', padding: '2px 6px' }}>
            <i class="bi bi-x-square-fill"></i>
           </button>
           <UserProfile userId={userDetail.user_id} onUserUpdate={handleUserUpdate} />

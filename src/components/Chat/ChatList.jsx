@@ -37,6 +37,7 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
 
   return (
     <div className="chat-list">
+      <h2>Danh sách cuộc trò chuyện</h2>
       <ul className="list-group">
         {conversations.map((conversation, index) => (
           <li

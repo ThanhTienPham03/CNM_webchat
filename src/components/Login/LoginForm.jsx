@@ -33,7 +33,7 @@ const LoginForm = () => {
                         userDetails.avatar_url
                     ) {
                         navigate('/home');
-                    } else {
+                    } else {                    
                         setIsUserInfoFormVisible(true);
                     }
                 } catch (err) {

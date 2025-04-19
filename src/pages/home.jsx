@@ -54,8 +54,9 @@ const Home = () => {
                 <ChatBox
                   conversationId={selectedConversationId}
                   conversationName={selectedConversationName}
-                  userId={userId}
                   token={accessToken}
+                  userId={userId}
+                  user={user}
                 />
               </div>
             </div>

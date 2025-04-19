@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ChangePasswordForm from '../components/ResetPassword/ChangePasswordForm';
 import { Container, Row, Col } from 'react-bootstrap';
 
-const ResetPassword = () => {
+const ChangePassword = () => {
+    const [accessToken, setAccessToken] = useState(''); 
+
     return (
         <Container
             fluid
@@ -35,7 +37,7 @@ const ResetPassword = () => {
                         >
                             Đặt lại mật khẩu
                         </h2>
-                        <ChangePasswordForm />
+                        <ChangePasswordForm accessToken={accessToken} />
                     </div>
                 </Col>
             </Row>
@@ -43,4 +45,4 @@ const ResetPassword = () => {
     );
 };
 
-export default ResetPassword;
+export default ChangePassword;
