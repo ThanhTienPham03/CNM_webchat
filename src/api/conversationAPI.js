@@ -63,5 +63,28 @@ const ConversationApi = {
   }
 };
 
+export const createConversation = async (userId, otherUserId, accessToken) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ participants: [userId, otherUserId] }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Không thể tạo cuộc trò chuyện');
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Lỗi khi tạo cuộc trò chuyện:', error);
+    throw error;
+  }
+};
+
 // console.log("API response:", response.data); 
 export default ConversationApi;

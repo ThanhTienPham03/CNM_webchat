@@ -2,8 +2,7 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:3000';
 
-export const createUserDetail = async (userData, token) => {
-    console.log('User data being sent:', userData);
+export const createUserDetail = async (userData, token) => {;
     const config = {
         headers: {
             Authorization: `Bearer ${token}`,
@@ -37,9 +36,6 @@ export const getUserDetailById = async (userId, token) => {
             Authorization: `Bearer ${token}`,
         },
     };
-    console.log('Fetching user detail for userId:', userId);
-    console.log('Using token:', token);
-    console.log('API URL:', `${API_BASE_URL}/api/userDetails/${userId}`);
     const response = await axios.get(`${API_BASE_URL}/api/userDetails/${userId}`, config);
     const userDetails = response.data;
 
@@ -61,7 +57,6 @@ export const getUserDetailById = async (userId, token) => {
         return { fullname: fullname || '', age: age || 0, gender: typeof gender === 'boolean' ? gender : null, avatar_url: avatar_url || '' };
     }
 
-    console.log('Validated user details:', userDetails);
     return userDetails;
 };
 

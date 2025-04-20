@@ -37,7 +37,12 @@ const LoginForm = () => {
                         setIsUserInfoFormVisible(true);
                     }
                 } catch (err) {
-                    console.error('Error fetching user info:', err);
+                    if (err.response && err.response.status === 404) {
+                        console.warn('User details not found, showing form to complete information.');
+                        setIsUserInfoFormVisible(true);
+                    } else {
+                        console.error('Error fetching user info:', err);
+                    }
                 }
             }
         };
@@ -100,30 +105,39 @@ const LoginForm = () => {
 
         try {
             const token = Cookies.get('accessToken');
-            const userCookie = Cookies.get('user'); // Retrieve user cookie
+            const userCookie = Cookies.get('user');
             if (!userCookie) {
                 console.error('User cookie is missing');
                 setFormErrors({ general: 'Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.' });
                 return;
             }
-            const user = JSON.parse(userCookie); // Parse user object from cookie
-            const userId = user.id; // Extract user ID from the user object
+            const user = JSON.parse(userCookie);
+            const userId = user.id;
 
-            // Ensure avatar_url is included in the userInfo
-            const updatedUserInfo = {
-                ...userInfo,
+            // Prepare user data
+            const userData = {
+                fullname: userInfo.fullname,
+                age: userInfo.age,
+                gender: userInfo.gender,
                 user_id: userId,
-                avatar_url: userInfo.avatar || '', // Use avatar field for avatar_url
+                avatar_url: userInfo.avatar, // Assuming avatar is already in Base64 format
             };
 
-            console.log('User Info:', updatedUserInfo);
+            console.log('User Info:', userData);
 
-            const response = await createUserDetail(updatedUserInfo, token);
+            // Call API to create user detail
+            const response = await createUserDetail(userData, token);
+
             console.log('User detail saved:', response);
-            dispatch(setUser(updatedUserInfo));
+            dispatch(setUser(userInfo));
             navigate('/home');
         } catch (error) {
             console.error('Error saving user detail:', error);
+            if (error.response && error.response.status === 413) {
+                setFormErrors({ general: 'Kích thước dữ liệu quá lớn. Vui lòng chọn ảnh nhỏ hơn.' });
+            } else {
+                setFormErrors({ general: 'Đã xảy ra lỗi khi lưu thông tin. Vui lòng thử lại sau.' });
+            }
         }
     };
 

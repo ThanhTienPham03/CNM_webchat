@@ -33,11 +33,11 @@ const Header = () => {
 
       if (accessToken && userCookie) {
         const user = JSON.parse(userCookie);
-        console.log('Parsed User:', user);
+        // console.log('Parsed User:', user);
 
         try {
           const detail = await getUserDetailById(user.id, accessToken);
-          console.log('Fetched User Detail:', detail);
+          // console.log('Fetched User Detail:', detail);
           setUserDetail(detail);
         } catch (error) {
           console.error('Error fetching user detail:', error);
@@ -100,7 +100,7 @@ const Header = () => {
       )}
       <div className="d-flex align-items-center">
         <button className="btn btn-outline-light btn-sm"  style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease', }} onMouseOver={(e) => (e.target.style.backgroundColor = 'red')} onMouseOut={(e) => (e.target.style.backgroundColor = 'transparent')} onClick={handleLogout} >
-        <i class="bi bi-box-arrow-right"></i>
+        <i className ="bi bi-box-arrow-right"></i>
         </button>
       </div>
       {showProfile && userDetail?.user_id && (

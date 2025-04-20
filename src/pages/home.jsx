@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Routes, Route } from "react-router-dom";
 import ChatBox from "../components/Chat/ChatBox";
 import ChatList from "../components/Chat/ChatList";
+import FriendList from "../components/Friend/FriendList";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "../components/Header/Header";
 import Navbar from "../components/Header/Navbar";
@@ -11,6 +12,7 @@ const Home = () => {
   const [chats, setChats] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [selectedConversationName, setSelectedConversationName] = useState(null);
+  const [activeComponent, setActiveComponent] = useState("ChatList");
   const userId = localStorage.getItem("user_id");
   const accessToken = localStorage.getItem("access_token");
 
@@ -35,6 +37,17 @@ const Home = () => {
     setSelectedConversationName(conversationName);
   };
 
+  const renderComponent = () => {
+    switch (activeComponent) {
+      case "ChatList":
+        return <ChatList userId={userId} accessToken={accessToken} chats={chats} onConversationSelect={handleConversationSelect} />;
+      case "FriendList":
+        return <FriendList userId={userId} accessToken={accessToken} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="container-fluid vh-100 d-flex flex-column">
       <Header />
@@ -45,13 +58,9 @@ const Home = () => {
           element={
             <div className="row flex-grow-1 h-100">
               <div className="col-4 border-end overflow-auto">
-              <Navbar/>
-                <ChatList
-                  userId={userId}
-                  accessToken={accessToken} 
-                  chats={chats}
-                  onConversationSelect={handleConversationSelect}
-                />
+              <Navbar onComponentChange={setActiveComponent} />
+              {renderComponent()}
+                
               </div>
               <div className="col-8 d-flex flex-column">
                 <ChatBox

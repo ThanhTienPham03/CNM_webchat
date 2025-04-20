@@ -1,36 +1,76 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import ConversationApi from '../../api/conversationAPI';
-import Navbar from '../Header/Navbar';
+import { fetchUserDetail } from '../../api/userDetailsAPI';
 
 const ChatList = ({ userId, accessToken, onConversationSelect }) => {
-  const [conversations, setConversations] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [conversations, setConversations] = useState([]);
 
-  const getListConversation = async () => {
-    try {
-      if (!accessToken || !userId) throw new Error("Token or userId is missing");
-      const data = await ConversationApi.fetchConversationsByUserId(userId, accessToken);
-      setConversations(data || []);
-    } catch (error) {
-      setError(error.message);
-      console.error("Fetch error:", error.message);
-    } finally {
-      setLoading(false);
+  const getListConversation = useCallback(async () => {
+    if (!userId || !accessToken) {
+      console.error('Thiếu userId hoặc accessToken');
+      return;
     }
-  };
+  
+    try {
+      const data = await ConversationApi.fetchConversationsByUserId(userId, accessToken);
+      console.log('Dữ liệu trả về từ API:', data); // Log toàn bộ dữ liệu trả về
+  
+      if (data) {
+        const detailsPromises = data.map(async (conv) => {
+          console.log('name:', conv.name); // Log giá trị name
+  
+          // Tách participants từ name
+          const participants = conv.name ? conv.name.split(',').map((id) => id.trim()) : [];
+          console.log('participants:', participants); // Log danh sách participants
+  
+          // Xác định otherUserId
+          const otherUserId = participants.find((id) => id !== String(userId));
+          console.log('otherUserId:', otherUserId); // Log giá trị otherUserId
+  
+          let otherUserDetail = null;
+          if (otherUserId) {
+            try {
+              otherUserDetail = await fetchUserDetail(otherUserId, accessToken);
+              console.log('Thông tin người dùng:', otherUserDetail); // Log thông tin trả về từ API
+            } catch (err) {
+              console.error(`Không thể lấy thông tin người dùng với ID: ${otherUserId}`, err);
+            }
+          }
+  
+          return {
+            ...conv,
+            otherUserDetail,
+          };
+        });
+  
+        const details = await Promise.all(detailsPromises);
+        console.log('Danh sách chi tiết cuộc trò chuyện:', details); // Log danh sách chi tiết
+        setConversations(details);
+      }
+    } catch (err) {
+      console.error('Lỗi khi lấy danh sách cuộc trò chuyện:', err);
+      setError('Không thể tải danh sách cuộc trò chuyện. Vui lòng thử lại sau.');
+    }
+  }, [userId, accessToken]);
 
   useEffect(() => {
+    console.log('Fetching conversations for user:', userId);
     getListConversation();
-  }, [userId, accessToken]);
+  }, [getListConversation]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      getListConversation();
-    }, 5000); // Refresh every 5 seconds
+    console.log('Danh sách cuộc trò chuyện:', conversations);
+  }, [conversations]);
 
-    return () => clearInterval(interval);
-  }, [userId, accessToken]);
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     console.log('Refreshing conversations for user:', userId);
+  //     getListConversation();
+  //   }, 5000); // Refresh every 5 seconds
+
+  //   return () => clearInterval(interval);
+  // }, [getListConversation]);
 
   const formatTime = (isoString) => {
     if (!isoString) return '';
@@ -44,21 +84,43 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
     });
   };
 
-  if (loading) return <div>Đang tải danh sách cuộc trò chuyện...</div>;
-  if (error) return <div className="text-danger">Lỗi: {error}</div>;
-  if (!conversations || conversations.length === 0) return <div>Không có cuộc trò chuyện nào.</div>;
+  if (error) {
+    return (
+      <div className="text-danger" style={{ color: 'red', textAlign: 'center', marginTop: '20px' }}>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!conversations || conversations.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', marginTop: '20px' }}>
+        <p>Không có cuộc trò chuyện nào.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="chat-list container " style={{ border: '1px solid #dee2e6', borderRadius: '8px', padding: '1rem' }}>
-      {/* <Navbar /> */}
-      <h2 className="text-start mb-2 text-primary">Danh sách cuộc trò chuyện</h2>
-
-      <ul className="list-group">
-        {conversations.map((conversation, index) => (
+    <ul className="list-group">
+      {conversations.map((item, index) => {
+        console.log('Render item:', item); // Kiểm tra từng phần tử
+        console.log('lastMessage:', item.lastMessage); // Kiểm tra lastMessage
+  
+        if (!item.id) {
+          console.error('Thiếu thuộc tính id cho item:', item);
+          return null;
+        }
+  
+        const avatarUrl = item.otherUserDetail?.avatar_url || '/OIP.png';
+        const fullname = item.otherUserDetail?.fullname || `Cuộc trò chuyện ${index + 1}`;
+        const lastMessage = item.lastMessage || 'Chưa có tin nhắn'; // Lấy nội dung tin nhắn cuối cùng
+        const time = formatTime(item.lastMessage?.updated_at);
+  
+        return (
           <li
-            key={conversation.id || index}
+            key={item.id}
             className="list-group-item d-flex align-items-center conversation-item p-3"
-            onClick={() => onConversationSelect(conversation.id, conversation.name)}
+            onClick={() => onConversationSelect(item.id, fullname)}
             style={{
               cursor: 'pointer',
               transition: 'background-color 0.3s',
@@ -70,32 +132,24 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
           >
             <img
-              src={conversation.avatar || '/OIP.png'}
+              src={avatarUrl}
               alt="Avatar"
               className="rounded-circle me-3 border border-primary"
               style={{ width: '50px', height: '50px', objectFit: 'cover' }}
             />
             <div className="flex-grow-1">
               <div className="d-flex justify-content-between align-items-center">
-                <strong className="text-primary fs-5">
-                  {conversation.name || `Cuộc trò chuyện ${index + 1}`}
-                </strong>
-                <small className="text-muted">
-                  {formatTime(conversation.time)}
-                </small>
+                <strong className="text-primary fs-5">{fullname}</strong>
+                <small className="text-muted">{time}</small>
               </div>
               <p className="text-muted mb-0 mt-1" style={{ fontSize: '0.95rem' }}>
-                {typeof conversation.lastMessage === 'object' && conversation.lastMessage !== null
-                  ? conversation.lastMessage.status === 'REVOKED'
-                    ? 'Tin nhắn đã được thu hồi'
-                    : conversation.lastMessage.content || formatTime(conversation.lastMessage.updated_at)
-                  : conversation.lastMessage || ''}
+                {lastMessage} {/* Hiển thị nội dung tin nhắn cuối cùng */}
               </p>
             </div>
           </li>
-        ))}
-      </ul>
-    </div>
+        );
+      })}
+    </ul>
   );
 };
 
