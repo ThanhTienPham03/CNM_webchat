@@ -4,6 +4,7 @@ import ChatBox from "../components/Chat/ChatBox";
 import ChatList from "../components/Chat/ChatList";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "../components/Header/Header";
+import Navbar from "../components/Header/Navbar";
 import { useSelector } from 'react-redux';
 
 const Home = () => {
@@ -19,7 +20,7 @@ const Home = () => {
     if (!userId || !accessToken) {
       console.error("User ID or token is missing. Please log in again.");
       alert("User ID or token is missing. Redirecting to login page.");
-      window.location.href = "/login";
+      window.location.href = "/";
       return;
     }
   }, [userId, accessToken]);
@@ -37,12 +38,14 @@ const Home = () => {
   return (
     <div className="container-fluid vh-100 d-flex flex-column">
       <Header />
+      
       <Routes>
         <Route
           path="/"
           element={
             <div className="row flex-grow-1 h-100">
               <div className="col-4 border-end overflow-auto">
+              <Navbar/>
                 <ChatList
                   userId={userId}
                   accessToken={accessToken} 

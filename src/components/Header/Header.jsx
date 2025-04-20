@@ -92,22 +92,13 @@ const Header = () => {
     <div className="d-flex align-items-center justify-content-between p-3 text-white shadow-sm" style={{ backgroundColor: '#6a11cb', borderBottom: '2px solid #4a0e9e' }} >
       {userDetail && (
         <div className="d-flex align-items-center">
-          <img src={userDetail.avatar_url || 'default-avatar.png'} alt="User Avatar" className="rounded-circle me-3" style={{ width: '50px', height: '50px',  objectFit: 'cover',  cursor: 'pointer',  border: '2px solid #fff', }} onClick={handleAvatarClick} />
-          <h5 className="mb-0" style={{ fontWeight: 'bold', fontSize: '18px', color: '#fff', marginRight: '15px' }} >
+          <img src={userDetail.avatar_url || 'default-avatar.png'} alt="User Avatar" className="rounded-circle me-3" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer', border: '2px solid #fff' }} onClick={handleAvatarClick} />
+          <h5 className="mb-0" style={{ fontWeight: 'bold', fontSize: '20px', color: '#fff', marginRight: '15px' }}>
             {userDetail.fullname || 'Tên người dùng'}
           </h5>
         </div>
       )}
       <div className="d-flex align-items-center">
-        <button className="btn btn-outline-light btn-sm me-2" style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease' }}>
-          <i className="bi bi-chat-text-fill"></i>
-        </button>
-        <button className="btn btn-outline-light btn-sm me-2" style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease' }}>
-          <i className="bi bi-people-fill"></i>
-        </button>
-        <button className="btn btn-outline-light btn-sm me-2" style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease' }}>
-          <i className="bi bi-bell-fill"></i>
-        </button>
         <button className="btn btn-outline-light btn-sm"  style={{ borderRadius: '20px', padding: '8px 20px', fontWeight: 'bold', fontSize: '16px', transition: 'background-color 0.3s ease', }} onMouseOver={(e) => (e.target.style.backgroundColor = 'red')} onMouseOut={(e) => (e.target.style.backgroundColor = 'transparent')} onClick={handleLogout} >
         <i class="bi bi-box-arrow-right"></i>
         </button>

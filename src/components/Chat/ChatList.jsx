@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ConversationApi from '../../api/conversationAPI';
+import Navbar from '../Header/Navbar';
 
 const ChatList = ({ userId, accessToken, onConversationSelect }) => {
   const [conversations, setConversations] = useState([]);
@@ -26,47 +27,69 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       getListConversation();
-    }, 1000); // Refresh every 5 seconds
+    }, 5000); // Refresh every 5 seconds
 
     return () => clearInterval(interval);
   }, [userId, accessToken]);
 
-  if (loading) return <div>Loading conversations...</div>;
-  if (error) return <div>Error: {error}</div>;
-  if (!conversations || conversations.length === 0) return <div>No conversations found.</div>;
+  const formatTime = (isoString) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toLocaleString('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  if (loading) return <div>Đang tải danh sách cuộc trò chuyện...</div>;
+  if (error) return <div className="text-danger">Lỗi: {error}</div>;
+  if (!conversations || conversations.length === 0) return <div>Không có cuộc trò chuyện nào.</div>;
 
   return (
-    <div className="chat-list">
-      <h2>Danh sách cuộc trò chuyện</h2>
+    <div className="chat-list container " style={{ border: '1px solid #dee2e6', borderRadius: '8px', padding: '1rem' }}>
+      {/* <Navbar /> */}
+      <h2 className="text-start mb-2 text-primary">Danh sách cuộc trò chuyện</h2>
+
       <ul className="list-group">
         {conversations.map((conversation, index) => (
           <li
             key={conversation.id || index}
-            className="list-group-item d-flex align-items-center"
+            className="list-group-item d-flex align-items-center conversation-item p-3"
             onClick={() => onConversationSelect(conversation.id, conversation.name)}
-            style={{ cursor: 'pointer', padding: '10px', borderBottom: '1px solid #ddd' }}
+            style={{
+              cursor: 'pointer',
+              transition: 'background-color 0.3s',
+              border: '1px solid #dee2e6',
+              borderRadius: '8px',
+              marginBottom: '0.5rem',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9fa')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
           >
             <img
               src={conversation.avatar || '/OIP.png'}
-              alt={`${conversation.name || 'User'}'s avatar`}
-              className="rounded-circle me-3"
-              style={{ width: '50px', height: '50px', objectFit: 'cover', border: '2px solid #007bff' }}
+              alt="Avatar"
+              className="rounded-circle me-3 border border-primary"
+              style={{ width: '50px', height: '50px', objectFit: 'cover' }}
             />
             <div className="flex-grow-1">
               <div className="d-flex justify-content-between align-items-center">
-                <strong style={{ fontSize: '1rem', color: '#333' }}>
-                  {conversation.name || `Conversation ${index + 1}`}
+                <strong className="text-primary fs-5">
+                  {conversation.name || `Cuộc trò chuyện ${index + 1}`}
                 </strong>
-                <small className="text-muted" style={{ fontSize: '0.8rem' }}>
-                  {conversation.time || ''}
+                <small className="text-muted">
+                  {formatTime(conversation.time)}
                 </small>
               </div>
-              <p className="text-muted mb-0" style={{ fontSize: '0.9rem', marginTop: '5px' }}>
+              <p className="text-muted mb-0 mt-1" style={{ fontSize: '0.95rem' }}>
                 {typeof conversation.lastMessage === 'object' && conversation.lastMessage !== null
-                  ? (conversation.lastMessage.status === 'REVOKED'
-                      ? 'Tin nhắn đã được thu hồi'
-                      : (conversation.lastMessage.content || conversation.lastMessage.updated_at || 'No message content'))
-                  : (conversation.lastMessage || 'No message available')}
+                  ? conversation.lastMessage.status === 'REVOKED'
+                    ? 'Tin nhắn đã được thu hồi'
+                    : conversation.lastMessage.content || formatTime(conversation.lastMessage.updated_at)
+                  : conversation.lastMessage || ''}
               </p>
             </div>
           </li>
