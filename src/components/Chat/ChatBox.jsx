@@ -170,7 +170,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                 ) : msg.image_url ? (
                   <img src={msg.image_url} alt="img" style={{ maxWidth: "100%", maxHeight: "300px", borderRadius: "10px" }} />
                 ) : msg.message_type === "file" ? (
-                  <a href={msg.file_url} target="_blank" rel="noreferrer" download>
+                  <a href={msg.image_url} target="_blank" rel="noreferrer" download>
                     {msg.content || "Click để tải file"}
                   </a>
                 ) : (
@@ -209,7 +209,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           onChange={(e) => setNewMessage(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-        <button className="btn btn-primary" onClick={handleSend} disabled={!conversationId}>Send</button>
+        <button className="btn btn-primary" onClick={handleSend} disabled={!conversationId}><i class="bi bi-send"></i></button>
       </div>
 
       {(selectedImage || selectedDocument) && (

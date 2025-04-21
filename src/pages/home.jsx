@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import ChatBox from "../components/Chat/ChatBox";
 import ChatList from "../components/Chat/ChatList";
 import FriendList from "../components/Friend/FriendList";
@@ -7,6 +7,30 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "../components/Header/Header";
 import Navbar from "../components/Header/Navbar";
 import { useSelector } from 'react-redux';
+import axios from 'axios';
+
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error("ErrorBoundary caught an error", error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return <h1>Đã xảy ra lỗi. Vui lòng thử lại sau.</h1>;
+        }
+
+        return this.props.children;
+    }
+}
 
 const Home = () => {
   const [chats, setChats] = useState([]);
@@ -15,7 +39,11 @@ const Home = () => {
   const [activeComponent, setActiveComponent] = useState("ChatList");
   const userId = localStorage.getItem("user_id");
   const accessToken = localStorage.getItem("access_token");
-
+  const [conversationDetails, setConversationDetails] = useState([]);
+  
+  // Initialize navigate using useNavigate
+  const navigate = useNavigate();
+  const API_URL = "http://localhost:3000"; // Use environment variable or default to localhost
   const user = useSelector((state) => state.auth.user); // Get user from Redux store
 
   useEffect(() => {
@@ -32,6 +60,25 @@ const Home = () => {
     console.log("User information updated:", user);
   }, [user]);
 
+  useEffect(() => {
+    const fetchConversationDetails = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/conversations/${userId}`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        setConversationDetails(response.data);
+      } catch (error) {
+        console.error("Error fetching conversation details:", error);
+      }
+    };
+
+    if (userId && accessToken) {
+      fetchConversationDetails();
+    }
+  }, [userId, accessToken]);
+
   const handleConversationSelect = (conversationId, conversationName) => {
     setSelectedConversationId(conversationId);
     setSelectedConversationName(conversationName);
@@ -42,7 +89,16 @@ const Home = () => {
       case "ChatList":
         return <ChatList userId={userId} accessToken={accessToken} chats={chats} onConversationSelect={handleConversationSelect} />;
       case "FriendList":
-        return <FriendList userId={userId} accessToken={accessToken} />;
+        return (
+          <ErrorBoundary>
+            <FriendList 
+              userId={userId} 
+              accessToken={accessToken} 
+              navigate={navigate} 
+              conversationDetails={conversationDetails} 
+            />
+          </ErrorBoundary>
+        );
       default:
         return null;
     }

@@ -11,42 +11,70 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
       console.error('Thiếu userId hoặc accessToken');
       return;
     }
-  
+
     try {
       const data = await ConversationApi.fetchConversationsByUserId(userId, accessToken);
-      console.log('Dữ liệu trả về từ API:', data); // Log toàn bộ dữ liệu trả về
-  
       if (data) {
         const detailsPromises = data.map(async (conv) => {
-          console.log('name:', conv.name); // Log giá trị name
-  
-          // Tách participants từ name
           const participants = conv.name ? conv.name.split(',').map((id) => id.trim()) : [];
-          console.log('participants:', participants); // Log danh sách participants
-  
-          // Xác định otherUserId
           const otherUserId = participants.find((id) => id !== String(userId));
-          console.log('otherUserId:', otherUserId); // Log giá trị otherUserId
-  
+
           let otherUserDetail = null;
           if (otherUserId) {
             try {
               otherUserDetail = await fetchUserDetail(otherUserId, accessToken);
-              console.log('Thông tin người dùng:', otherUserDetail); // Log thông tin trả về từ API
+              if ( !otherUserDetail.isFriend) {
+                // console.warn(`Người dùng với ID: ${otherUserId} chưa là bạn bè.`);
+                otherUserDetail = { fullname: otherUserDetail.fullname, avatar_url: otherUserDetail.avatar_url }; // Gán thông tin mặc định
+              }
             } catch (err) {
-              console.error(`Không thể lấy thông tin người dùng với ID: ${otherUserId}`, err);
+              if (err.message === 'User detail not found.') {
+                console.warn(`Người dùng với ID: ${otherUserId} không tồn tại. Gán thông tin mặc định.`);
+                otherUserDetail = { fullname: 'Người dùng không tồn tại', avatar_url: null }; // Gán thông tin mặc định
+              } else {
+                console.error(`Không thể lấy thông tin người dùng với ID: ${otherUserId}`, err);
+                otherUserDetail = { fullname: 'Lỗi khi lấy thông tin', avatar_url: null }; // Gán thông tin lỗi
+              }
             }
           }
-  
+
           return {
             ...conv,
             otherUserDetail,
           };
         });
-  
         const details = await Promise.all(detailsPromises);
-        console.log('Danh sách chi tiết cuộc trò chuyện:', details); // Log danh sách chi tiết
-        setConversations(details);
+        const filteredDetails = details.map((item) => {
+          if (!item || !item.otherUserDetail) {
+            return {
+              ...item,
+              otherUserDetail: {
+                fullname: 'Người dùng không tồn tại',
+                avatar_url: '/OIP.png',
+              },
+            };
+          } else if (item.otherUserDetail && !item.otherUserDetail.isFriend) {
+            console.warn(`Người dùng với ID: ${item.otherUserDetail.id} chưa kết bạn.`);
+            return {
+              ...item,
+              otherUserDetail: {
+                ...item.otherUserDetail,
+                fullname: `${item.otherUserDetail.fullname}`
+              },
+            };
+          } else if (item.otherUserDetail) {
+            return {
+              ...item,
+              otherUserDetail: {
+                ...item.otherUserDetail,
+                fullname: item.otherUserDetail.fullname || 'Tên không xác định',
+                avatar_url: item.otherUserDetail.avatar_url || '/OIP.png',
+              },
+            };
+          }
+          return item; 
+        });
+        setConversations(filteredDetails);
       }
     } catch (err) {
       console.error('Lỗi khi lấy danh sách cuộc trò chuyện:', err);
@@ -113,7 +141,9 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
   
         const avatarUrl = item.otherUserDetail?.avatar_url || '/OIP.png';
         const fullname = item.otherUserDetail?.fullname || `Cuộc trò chuyện ${index + 1}`;
-        const lastMessage = item.lastMessage || 'Chưa có tin nhắn'; // Lấy nội dung tin nhắn cuối cùng
+        const lastMessageContent = typeof item.lastMessage === 'object' && item.lastMessage !== null
+          ? item.lastMessage.content || 'Chưa có tin nhắn'
+          : item.lastMessage || 'Chưa có tin nhắn';
         const time = formatTime(item.lastMessage?.updated_at);
   
         return (
@@ -143,7 +173,7 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
                 <small className="text-muted">{time}</small>
               </div>
               <p className="text-muted mb-0 mt-1" style={{ fontSize: '0.95rem' }}>
-                {lastMessage} {/* Hiển thị nội dung tin nhắn cuối cùng */}
+                {lastMessageContent} 
               </p>
             </div>
           </li>

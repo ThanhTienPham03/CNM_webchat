@@ -15,6 +15,8 @@ const ConversationApi = {
         },
       });
 
+      console.log("API response:", response.data); // Log chi tiết dữ liệu trả về từ API
+
       const conversations = response.data.map((item) => ({
         id: item.conversation_id, 
         name: item.participants.join(", ") || "Unknown User", 
@@ -24,6 +26,7 @@ const ConversationApi = {
       }));
       return conversations;
     } catch (err) {
+      console.error("Lỗi khi fetch conversations:", err.message || err);
       throw new Error(err.message || "Failed to fetch conversations");
     }
   },

@@ -65,22 +65,38 @@ export const getFriends = async (userId = getUserId()) => {
 // Gửi yêu cầu kết bạn
 export const sendFriendRequestWithAxios = async (friendId) => {
     try {
+        if (!friendId) {
+            throw new Error("friendId không được để trống.");
+        }
+
         const response = await axiosInstance.post(`/friends/request`, {
-            user_id: getUserId(),
             friend_id: friendId,
         });
-        Alert.alert("Thành công", "Đã gửi yêu cầu kết bạn.");
+
+        console.log("Yêu cầu kết bạn thành công:", response.data);
         return response.data;
     } catch (error) {
-        throw new Error(error.response?.data?.message || 'Không thể gửi yêu cầu kết bạn');
+        if (error.response && error.response.status === 400) {
+            console.error("Lỗi từ server:", error.response.data);
+        } else {
+            console.error("Lỗi khi gửi yêu cầu kết bạn:", error.message);
+        }
+        throw error;
     }
 };
 
 // Chấp nhận yêu cầu kết bạn
 export const acceptFriendRequest = async (friendId) => {
+    const userId = getUserId();
+    if (!userId || isNaN(userId)) {
+        throw new Error("userId không hợp lệ. Vui lòng kiểm tra lại.");
+    }
+    if (!friendId || isNaN(friendId)) {
+        throw new Error("friendId không hợp lệ. Vui lòng kiểm tra lại.");
+    }
     try {
         const response = await axiosInstance.post(`/friends/accept`, {
-            user_id: getUserId(),
+            user_id: userId,
             friend_id: friendId,
         });
         return response.data;
@@ -130,22 +146,22 @@ export const unblockUser = async (friendId) => {
     }
 };
 
-export const searchUser = async () => {
+// Removed setLoading from the API layer as it is a UI-related function
+export const searchUser = async (keyword) => {
     if (!keyword.trim()) {
-        Alert.alert("Thông báo", "Vui lòng nhập email hoặc số điện thoại.");
-        return;
+        throw new Error("Vui lòng nhập email hoặc số điện thoại.");
     }
 
     try {
-        setLoading(true);
-        const response = await axios.post(`${API_URL}/api/users/search`,
+        const response = await axiosInstance.post(
+            `/users/search`,
             {
                 keyword: keyword,
-                id: Number(user.id),
+                id: Number(getUserId()),
             },
             {
                 headers: {
-                    Authorization: `Bearer ${accessToken}`,
+                    Authorization: `Bearer ${getAuthToken()}`,
                     "Content-Type": "application/json",
                 },
             }
@@ -153,34 +169,36 @@ export const searchUser = async () => {
 
         const { users, userDetails } = response.data;
 
-        const combinedResults = users.map((u) => {
+        return users.map((u) => {
             const detail = userDetails.find((d) => d.user_id === u.id) || {};
             return { ...u, ...detail };
         });
-
-        setResults(combinedResults);
     } catch (error) {
         console.error("Lỗi tìm người dùng:", error);
-        Alert.alert("Lỗi", "Không thể tìm kiếm người dùng.");
-    } finally {
-        setLoading(false);
+        throw new Error("Không thể tìm kiếm người dùng.");
     }
 };
 
 export const sendFriendRequest = async (friendId) => {
-    try {
-      await axios.post(`http://localhost:3000/api/friends/add`, {
-        user_id: user.id,
-        friend_id: friendId,
-      }, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        }
-      });
-      Alert.alert("Thành công", "Đã gửi lời mời kết bạn.");
-    } catch (error) {
-      console.error("Lỗi gửi lời mời:", error);
-      Alert.alert("Lỗi", "Không thể gửi lời mời kết bạn.");
+    const userId = getUserId();
+    if (!userId || isNaN(userId)) {
+        throw new Error("userId không hợp lệ. Vui lòng kiểm tra lại.");
     }
-  };
+    if (!friendId || isNaN(friendId)) {
+        throw new Error("friendId không hợp lệ. Vui lòng kiểm tra lại.");
+    }
+    try {
+        console.log("Gửi lời mời kết bạn cho ID:", friendId);
+        const response = await axiosInstance.post(`/friends/add`, {
+            user_id: userId,
+            friend_id: friendId,
+        });
+        console.log("Kết quả API:", response.data);
+        Alert.alert("Thành công", "Đã gửi lời mời kết bạn.");
+        return response.data;
+    } catch (error) {
+        console.error("Lỗi gửi lời mời:", error);
+        Alert.alert("Lỗi", error.response?.data?.message || "Không thể gửi lời mời kết bạn.");
+        throw error;
+    }
+};

@@ -1,4 +1,3 @@
-
 const USER_DETAIL_API = "http://localhost:3000/api/userDetails";
 
 
@@ -17,6 +16,10 @@ export const fetchUserDetail = async (user_id, accessToken) => {
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`Người dùng với ID ${user_id} không tồn tại.`); // Log cảnh báo nếu không tìm thấy người dùng
+        return null; // Trả về null nếu người dùng không tồn tại
+      }
       const errorData = await response.json();
       throw new Error(errorData.message || "Lỗi khi lấy thông tin người dùng");
     }
