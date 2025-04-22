@@ -164,6 +164,8 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       const formattedMessages = data.map(msg => normalizeMessage(msg));
       setMessages(formattedMessages);
       setShouldRefresh(false);
+      console.log("Fetched messages:", formattedMessages);
+      
     } catch (error) {
       console.error("Error fetching messages:", error);
     } finally {
@@ -207,7 +209,22 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           setMessages(prev => [...prev, normalized]);
         }
       });
-
+      socket.on('message revoked', message => {
+        if (message.conversation_id === conversationId) {
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === message.message_id 
+               ? message: msg
+            )
+          );
+        }
+      }); 
+      socket.on('message deleted', (message_id) => {
+        console.log("Message deleted:", message_id);
+        setMessages(prev =>
+          prev.filter(msg => msg.id !== message_id)
+        );
+      });
 
       socket.on('message updated', (updatedMessage) => {
         if (updatedMessage.conversation_id === conversationId) {
@@ -224,6 +241,8 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       return () => {
         socket.off('new message');
         socket.off('message updated');
+        socket.off('message revoked');
+        socket.off('message deleted');
       };
     }
   }, [socket, conversationId]);
@@ -292,7 +311,9 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           }
           
           const normalized = normalizeMessage({
+            
             ...response,
+            message_id: response.message_id,
             type: type,
             content: newMessage || file.name,
             url: response.url || response.file_url || response.image_url // Prioritize url field
@@ -301,9 +322,10 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           console.log("Normalized new message:", normalized);
 
           // Emit new message through socket
-          socket.emit('send message', normalized);
+          socket.emit('send message', response);
+          // console.log("Messages before sending:", messages);
           
-          setMessages(prev => [...prev, normalized]);
+          // setMessages(prev => [...prev, normalized]);
           
           // Kích hoạt auto refresh
           setShouldRefresh(true);
@@ -329,6 +351,8 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         setLastMessageTime(Date.now());
       }
   
+      console.log("Messages after sending:", messages);
+
       setNewMessage("");
       setSelectedImage(null);
       setSelectedDocument(null);
@@ -374,7 +398,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       );
 
       console.log("Revoke response:", response);
-
+      socket.emit('revoke message',response.revokedMessage)
       if (response) {
         // Emit message update through socket
         updateMessage({
@@ -448,7 +472,11 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       );
 
       console.log("Delete response:", response);
-
+      const socketData = {
+        message_id: response.id,
+        conversation_id: conversationId,
+      }
+      socket.emit('delete message', socketData);
       if (response) {
         // Emit message update through socket
         updateMessage({
