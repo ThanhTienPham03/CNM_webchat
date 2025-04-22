@@ -8,7 +8,8 @@ import Header from "../components/Header/Header";
 import Navbar from "../components/Header/Navbar";
 import { useSelector } from 'react-redux';
 import axios from 'axios';
-
+import NotificationPage from './NotificationPage';
+import { initializeSocket } from '../utils/socket';
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
@@ -61,6 +62,13 @@ const Home = () => {
   }, [user]);
 
   useEffect(() => {
+    const socket = initializeSocket(accessToken);
+
+      socket.on("connect", () => {
+        console.log(`User ${userId} connected Socket`);
+        //thong bao toi server user online
+        socket.emit("online", { user: user });
+      });
     const fetchConversationDetails = async () => {
       try {
         const response = await axios.get(`${API_URL}/api/conversations/${userId}`, {
@@ -99,6 +107,8 @@ const Home = () => {
             />
           </ErrorBoundary>
         );
+        case "Notifications":
+        return <NotificationPage userId={userId} accessToken={accessToken} />;
       default:
         return null;
     }

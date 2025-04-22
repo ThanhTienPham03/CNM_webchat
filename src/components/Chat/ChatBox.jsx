@@ -3,6 +3,7 @@ import "../../assets/styles.css";
 import MessageAPI from "../../api/messageAPI";
 import Picker from "emoji-picker-react";
 import axios from "axios";
+import { useSocket } from "../../hooks/useSocket";
 
 const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [messages, setMessages] = useState([]);
@@ -13,9 +14,24 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [contextMenu, setContextMenu] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [participants, setParticipants] = useState([]);
+  const [lastSeenMessageId, setLastSeenMessageId] = useState(null);
+
+  // Thêm state để kiểm soát refresh
+  const [shouldRefresh, setShouldRefresh] = useState(false);
+  const [lastMessageTime, setLastMessageTime] = useState(null);
 
   const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const baseURL = "http://localhost:3000";
+  const { 
+    socket, 
+    sendMessage, 
+    updateMessage, 
+    sendTyping, 
+    sendSeen, 
+    isTyping, 
+    typingUser 
+  } = useSocket(conversationId);
 
   const cleanFileName = (fileName) => {
     if (!fileName) return "Unnamed File";
@@ -81,7 +97,6 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   };
 
   const normalizeMessage = (msg) => {
-    console.log("Normalizing message input:", msg);
     
     let messageType = (msg.type || msg.message_type || "text").toLowerCase();
     if (messageType === "pdf") {
@@ -99,8 +114,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     
     if (messageType === "file" || messageType === "image") {
       // Check all possible URL fields
-      url = msg.url || msg.s3_url || msg.file_url || msg.image_url;
-      console.log("Found URL:", url);
+      url = msg.url  || msg.file_url || msg.image_url;
 
       if (messageType === "file") {
         fileUrl = url;
@@ -127,14 +141,12 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       conversation_id: msg.conversation_id,
       fileName: fileName
     };
-
-    console.log("Normalized message output:", normalized);
     return normalized;
   };
 
   const formatFileName = (fileName) => {
     if (!fileName) return "Tải file";
-    // Limit file name length and add ellipsis if too long
+ 
     const maxLength = 30;
     if (fileName.length > maxLength) {
       const extension = fileName.split('.').pop();
@@ -149,20 +161,9 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     setLoading(true);
     try {
       const data = await MessageAPI.fetchMessages(conversationId, token);
-      console.log("Fetched messages raw:", data);
-      
-      const formattedMessages = data.map(msg => {
-        // For image messages, ensure we have the URL in the content if not in other fields
-        if ((msg.message_type?.toLowerCase() === "image" || msg.message_type?.toLowerCase() === "image_text") 
-            && !msg.url && !msg.s3_url && !msg.image_url) {
-          msg.url = msg.content;
-        }
-        const normalized = normalizeMessage(msg);
-        console.log("Normalized fetched message:", normalized);
-        return normalized;
-      });
-      
+      const formattedMessages = data.map(msg => normalizeMessage(msg));
       setMessages(formattedMessages);
+      setShouldRefresh(false);
     } catch (error) {
       console.error("Error fetching messages:", error);
     } finally {
@@ -196,6 +197,58 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       return "";
     }
   };
+
+  useEffect(() => {
+    if (socket) {
+      // Listen for new messages
+      socket.on('new message', (message) => {
+        if (message.conversation_id === conversationId) {
+          const normalized = normalizeMessage(message);
+          setMessages(prev => [...prev, normalized]);
+        }
+      });
+
+
+      socket.on('message updated', (updatedMessage) => {
+        if (updatedMessage.conversation_id === conversationId) {
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === updatedMessage.id 
+                ? { ...msg, status: updatedMessage.status } 
+                : msg
+            )
+          );
+        }
+      });
+
+      return () => {
+        socket.off('new message');
+        socket.off('message updated');
+      };
+    }
+  }, [socket, conversationId]);
+
+  // Auto refresh messages
+  useEffect(() => {
+    if (shouldRefresh) {
+      const refreshInterval = setInterval(() => {
+        fetchMessages();
+      }, 1000); // Refresh every 1 second
+
+      return () => clearInterval(refreshInterval);
+    }
+  }, [shouldRefresh, fetchMessages]);
+
+  // Reset refresh after 5 seconds
+  useEffect(() => {
+    if (lastMessageTime) {
+      const timeout = setTimeout(() => {
+        setShouldRefresh(false);
+      }, 5000);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [lastMessageTime]);
 
   const handleSend = async () => {
     if (!newMessage.trim() && !selectedImage && !selectedDocument) {
@@ -246,7 +299,15 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           });
 
           console.log("Normalized new message:", normalized);
+
+          // Emit new message through socket
+          socket.emit('send message', normalized);
+          
           setMessages(prev => [...prev, normalized]);
+          
+          // Kích hoạt auto refresh
+          setShouldRefresh(true);
+          setLastMessageTime(Date.now());
         }
       } else {
         const messageData = {
@@ -256,8 +317,16 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           content: newMessage,
           type: "TEXT",
         };
-        await MessageAPI.sendMessage(messageData, token);
-        await fetchMessages();
+        const response = await MessageAPI.sendMessage(messageData, token);
+        console.log("Response from send message:", response.message);
+        // Emit new message through socket
+        socket.emit('send message', response.message);
+        
+        setMessages(prev => [...prev, normalizeMessage(response)]);
+        
+        // Kích hoạt auto refresh
+        setShouldRefresh(true);
+        setLastMessageTime(Date.now());
       }
   
       setNewMessage("");
@@ -307,6 +376,13 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       console.log("Revoke response:", response);
 
       if (response) {
+        // Emit message update through socket
+        updateMessage({
+          id: messageId,
+          status: 'REVOKED',
+          conversation_id: conversationId
+        });
+
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === messageId
@@ -322,7 +398,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           )
         );
 
-        // Remove the file name from localStorage if it was a file
+       
         if (messageToRevoke.file_url) {
           const fileNames = JSON.parse(localStorage.getItem('fileNames') || '{}');
           delete fileNames[messageToRevoke.file_url];
@@ -348,7 +424,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         return;
       }
 
-      // Check if the current user is the sender
+
       if (Number(messageToDelete.sender) !== Number(userId)) {
         alert("Bạn không thể xóa tin nhắn của người khác");
         return;
@@ -374,6 +450,13 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       console.log("Delete response:", response);
 
       if (response) {
+        // Emit message update through socket
+        updateMessage({
+          id: messageId,
+          status: 'DELETED',
+          conversation_id: conversationId
+        });
+
         // Remove the message from the messages array
         setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
@@ -407,10 +490,55 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     return Number(messageSender) === Number(userId);
   };
 
+  // Auto scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Handle typing indicator
+  const handleTyping = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    sendTyping();
+    typingTimeoutRef.current = setTimeout(() => {
+      // Reset typing status after 1 second of no typing
+    }, 1000);
+  }, [sendTyping]);
+
+  // Handle message seen
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.id !== lastSeenMessageId && lastMessage.sender !== userId) {
+        sendSeen(lastMessage.id);
+        setLastSeenMessageId(lastMessage.id);
+      }
+    }
+  }, [messages, lastSeenMessageId, userId, sendSeen]);
+
+
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
+    handleTyping();
+  };
+
   return (
     <div className="d-flex flex-column h-100 border rounded">
       <div className="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
-        <h5 className="mb-0">{conversationName || "Chọn cuộc trò chuyện"}</h5>
+        <div>
+          <h5 className="mb-0">{conversationName || "Chọn cuộc trò chuyện"}</h5>
+          {participants.length > 2 && (
+            <small className="text-white-50">
+              {participants.length} thành viên
+            </small>
+          )}
+        </div>
+        {isTyping && typingUser && (
+          <small className="text-white-50">
+            {participants.find(p => p.id === typingUser)?.fullname || 'Someone'} đang nhập...
+          </small>
+        )}
       </div>
 
       <div className="flex-grow-1 p-3 overflow-y-scroll custom-scroll bg-light" style={{ maxHeight: "500px" }}>
@@ -420,7 +548,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           <p className="text-center text-muted">Chưa có tin nhắn nào</p>
         ) : (
           messages.map((msg, idx) => {
-            if (msg.status === "DELETED") return null; // Skip rendering deleted messages
+            if (msg.status === "DELETED") return null;
             
             // console.log("Rendering message:", msg);
             const messageType = msg.message_type?.toLowerCase();
@@ -442,6 +570,11 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                   className={`p-2 rounded ${isSender(msg.sender) ? "bg-primary text-white" : "bg-secondary text-white"}`}
                   style={{ maxWidth: "70%" }}
                 >
+                  {!isSender(msg.sender) && participants.find(p => p.id === msg.sender) && (
+                    <small className="d-block mb-1 text-white-50">
+                      {participants.find(p => p.id === msg.sender)?.fullname || 'Unknown User'}
+                    </small>
+                  )}
                   {msg.status === "REVOKED" ? (
                     <div className="d-flex align-items-center">
                       <i className="bi bi-clock-history me-2"></i>
@@ -540,7 +673,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           className="form-control me-2"
           placeholder="Type a message..."
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
         <button className="btn btn-primary" onClick={handleSend} disabled={!conversationId || loading}>

@@ -10,6 +10,8 @@ const FriendList = ({ userId, accessToken, navigate }) => {
     const [keyword, setKeyword] = useState("");
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [sentRequests, setSentRequests] = useState(new Set());
+    const [pendingRequests, setPendingRequests] = useState(new Set());
     const [friends, setFriends] = useState([]);
     const [error, setError] = useState(null);
     const [friendRequests, setFriendRequests] = useState([]);
@@ -49,7 +51,7 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                 avatar_url: friend.avatar_url || friend.UserDetail?.avatar_url || 'OIP.png',
             }));
 
-            console.log("Processed Friend Details:", processedFriends); // Log dữ liệu đã xử lý
+            console.log("Processed Friend Details:", processedFriends); 
 
             setFriends(processedFriends.filter(Boolean));
         } catch (error) {
@@ -101,6 +103,13 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                 { user_id: userId, friend_id },
                 { headers: { Authorization: `Bearer ${accessToken}` } }
             );
+
+            // Tạo cuộc trò chuyện mới sau khi chấp nhận kết bạn
+            await axios.post(`${API_URL}/api/conversations/create`,
+                { user_id: userId, friend_id },
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+
             fetchFriends();
             fetchFriendRequests();
         } catch (err) {
@@ -123,29 +132,66 @@ const FriendList = ({ userId, accessToken, navigate }) => {
 
     const fetchFriendRequests = async () => {
         try {
-            const res = await axios.get(`${API_URL}/api/friends/requests/${userId}`, {
+            // Chuyển đổi userId sang number
+            const numericUserId = Number(userId);
+            console.log('Đang lấy danh sách lời mời kết bạn cho user:', numericUserId);
+            
+            // Lấy lời mời nhận được
+            const receivedRes = await axios.get(`${API_URL}/api/friends/requests/${numericUserId}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-
-            setFriendRequests(res.data);
-
-            const detailsPromises = res.data.map(async (request) => {
-                const userDetail = await fetchUserDetail(request.user_id, accessToken);
-                return { ...request, userDetail };
+            
+            console.log('Response lời mời nhận được:', {
+                status: receivedRes.status,
+                data: receivedRes.data
             });
 
-            const details = await Promise.all(detailsPromises);
-            setFriendRequestsDetails(details);
+            // Đảm bảo data là array và chuyển đổi friend_id sang number
+            const receivedRequests = Array.isArray(receivedRes.data) 
+                ? receivedRes.data.map(req => ({
+                    ...req,
+                    friend_id: Number(req.friend_id)
+                }))
+                : [];
+
+            // Cập nhật state
+            setFriendRequests(receivedRequests);
+            
+            // Lấy chi tiết người dùng cho lời mời nhận được
+            if (receivedRequests.length > 0) {
+                const detailsPromises = receivedRequests.map(async (request) => {
+                    const userDetail = await fetchUserDetail(request.friend_id, accessToken);
+                    return { ...request, userDetail };
+                });
+
+                const details = await Promise.all(detailsPromises);
+                console.log('Chi tiết người dùng gửi lời mời:', details);
+                setFriendRequestsDetails(details);
+            } else {
+                setFriendRequestsDetails([]);
+            }
+
         } catch (err) {
-            console.error("Lỗi khi lấy lời mời kết bạn:", err);
+            console.error("Chi tiết lỗi khi lấy lời mời kết bạn:", {
+                message: err.message,
+                response: err.response?.data,
+                status: err.response?.status
+            });
+            toast.error("Không thể lấy danh sách lời mời kết bạn");
         }
     };
 
     const sendFriendRequest = async (friendId) => {
         try {
-            await axios.post(
+            const requestData = { 
+                user_id: Number(userId), 
+                friend_id: Number(friendId) 
+            };
+            console.log('Đang gửi lời mời kết bạn:', requestData);
+            
+            const response = await axios.post(
                 `${API_URL}/api/friends/add`,
-                { user_id: userId, friend_id: friendId },
+                requestData,
                 {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
@@ -153,16 +199,102 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                     },
                 }
             );
-            alert("Đã gửi lời mời kết bạn.");
-            toast.success("Đã gửi lời mời kết bạn.");
+            
+            console.log('Response đầy đủ từ server:', {
+                status: response.status,
+                statusText: response.statusText,
+                data: response.data
+            });
+
+            // Kiểm tra lỗi từ server
+            if (response.data?.error) {
+                console.error('Lỗi từ server:', response.data.error);
+                toast.error(response.data.error);
+                return;
+            }
+
+            // Kiểm tra message từ server
+            if (response.data?.message) {
+                console.log('Thông báo từ server:', response.data.message);
+                toast.success(response.data.message);
+                
+                // Thêm vào danh sách đã gửi
+                setSentRequests(prev => new Set([...prev, friendId]));
+                setPendingRequests(prev => new Set([...prev, friendId]));
+                
+                // Kiểm tra ngay lập tức
+                await checkFriendRequestStatus();
+            }
         } catch (error) {
-            console.error("Lỗi gửi lời mời:", error);
-            toast.error("Không thể gửi lời mời kết bạn.");
+            console.error("Chi tiết lỗi:", {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
+            
+            // Hiển thị lỗi từ server hoặc lỗi mặc định
+            const errorMessage = error.response?.data?.error || error.message || "Không thể gửi lời mời kết bạn.";
+            toast.error(errorMessage);
+        }
+    };
+
+    const checkFriendRequestStatus = async () => {
+        try {
+            console.log('Kiểm tra trạng thái lời mời kết bạn cho user:', userId);
+            
+            // Lấy danh sách lời mời nhận được
+            const receivedRes = await axios.get(`${API_URL}/api/friends/requests/${userId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            
+            console.log('Chi tiết response lời mời:', {
+                status: receivedRes.status,
+                data: receivedRes.data
+            });
+
+            // Kiểm tra cấu trúc dữ liệu
+            if (Array.isArray(receivedRes.data)) {
+                console.log('Phân tích danh sách lời mời:', receivedRes.data.map(req => ({
+                    friend_id: req.friend_id,
+                    status: req.status,
+                    isSender: req.isSender,
+                    created_at: req.created_at
+                })));
+            }
+
+            // Cập nhật state nếu có dữ liệu mới
+            const receivedRequests = Array.isArray(receivedRes.data) 
+                ? receivedRes.data.filter(req => req.status === "PENDING" && !req.isSender)
+                : [];
+
+            console.log('Lời mời đang chờ xử lý:', receivedRequests);
+
+            setFriendRequests(receivedRequests);
+            
+            if (receivedRequests.length > 0) {
+                const detailsPromises = receivedRequests.map(async (request) => {
+                    const userDetail = await fetchUserDetail(request.friend_id, accessToken);
+                    return { ...request, userDetail };
+                });
+
+                const details = await Promise.all(detailsPromises);
+                console.log('Chi tiết người dùng gửi lời mời:', details);
+                setFriendRequestsDetails(details);
+            } else {
+                setFriendRequestsDetails([]);
+            }
+        } catch (err) {
+            console.error("Chi tiết lỗi khi kiểm tra lời mời:", {
+                message: err.message,
+                response: err.response?.data,
+                status: err.response?.status
+            });
         }
     };
 
     const handleChatPress = async (otherUserId, otherUserDetail) => {
         try {
+            // Kiểm tra xem conversations.data có phải là mảng không
             const conversations = await axios.get(
                 `${API_URL}/api/conversations/${userId}`,
                 {
@@ -173,22 +305,36 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                 }
             );
 
-            const conversation = conversations.data.find(
-                (conv) =>
-                    Array.isArray(conv.participants) &&
-                    conv.participants.includes(otherUserId)
-            );
+            let conversation = Array.isArray(conversations.data)
+                ? conversations.data.find(
+                    (conv) =>
+                        Array.isArray(conv.participants) &&
+                        conv.participants.includes(otherUserId)
+                )
+                : null;
 
-            if (conversation) {
-                navigate(`/chat/${conversation.conversation_id}`, {
-                    state: { otherUserDetail },
-                });
-            } else {
-                alert("Chưa có cuộc trò chuyện với người này.");
+            // Nếu chưa có, tạo mới cuộc trò chuyện
+            if (!conversation) {
+                const response = await axios.post(
+                    `${API_URL}/api/conversations/add`,
+                    { user_id: userId, friend_id: otherUserId },
+                    {
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+                conversation = response.data;
             }
+
+            // Điều hướng tới trang chat với user đó
+            navigate(`/chat/${conversation.conversation_id}`, {
+                state: { otherUserDetail },
+            });
         } catch (error) {
-            console.error("Lỗi lấy thông tin cuộc trò chuyện:", error);
-            alert("Không thể lấy thông tin cuộc trò chuyện.");
+            console.error("Lỗi khi xử lý cuộc trò chuyện:", error);
+            toast.error("Không thể mở cuộc trò chuyện. Vui lòng thử lại.");
         }
     };
 
@@ -211,18 +357,70 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                                 />
                                 <strong className="text-primary ml-2">{user.fullname || "Tên không xác định"}</strong>
                             </div>
-                            <button
-                                className="btn btn-outline-primary btn-sm"
-                                onClick={() => sendFriendRequest(user.user_id)}
-                            >
-                                Gửi kết bạn
-                            </button>
+                            {pendingRequests.has(user.user_id) ? (
+                                <span className="text-warning">
+                                    <i className="fas fa-clock me-1"></i>
+                                    Đã gửi lời mời - Đang chờ phản hồi
+                                </span>
+                            ) : sentRequests.has(user.user_id) ? (
+                                <span className="text-muted">Đã gửi lời mời kết bạn!</span>
+                            ) : (
+                                <button
+                                    className="btn btn-outline-primary btn-sm"
+                                    onClick={() => sendFriendRequest(user.user_id)}
+                                >
+                                    Gửi kết bạn
+                                </button>
+                            )}
                         </li>
                     )
                 ))}
             </ul>
         );
     };
+
+    // Thêm useEffect để tự động cập nhật trạng thái lời mời
+    useEffect(() => {
+        const checkPendingRequests = async () => {
+            const newPendingRequests = new Set();
+            for (const friendId of pendingRequests) {
+                try {
+                    const res = await axios.get(`${API_URL}/api/friends/requests/${userId}`, {
+                        headers: { Authorization: `Bearer ${accessToken}` }
+                    });
+                    
+                    if (Array.isArray(res.data)) {
+                        const isPending = res.data.some(request => 
+                            request.user_id === friendId && request.status === 'pending'
+                        );
+                        if (isPending) {
+                            newPendingRequests.add(friendId);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Lỗi khi kiểm tra trạng thái:', error);
+                }
+            }
+            setPendingRequests(newPendingRequests);
+        };
+
+        if (pendingRequests.size > 0) {
+            const interval = setInterval(checkPendingRequests, 10000);
+            return () => clearInterval(interval);
+        }
+    }, [pendingRequests, userId, accessToken]);
+
+    // Thêm useEffect để tự động cập nhật trạng thái
+    useEffect(() => {
+        if (userId) {
+            // Kiểm tra ngay khi component mount
+            checkFriendRequestStatus();
+            
+            // Tự động refresh mỗi 10 giây
+            const interval = setInterval(checkFriendRequestStatus, 10000);
+            return () => clearInterval(interval);
+        }
+    }, [userId]);
 
     return (
         <div className="container-fluid py-4" style={{ backgroundColor: '#f7f7f7' }}>

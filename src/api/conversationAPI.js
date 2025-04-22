@@ -17,13 +17,24 @@ const ConversationApi = {
 
       console.log("API response:", response.data); // Log chi tiết dữ liệu trả về từ API
 
-      const conversations = response.data.map((item) => ({
-        id: item.conversation_id, 
-        name: item.participants.join(", ") || "Unknown User", 
-        lastMessage: item.lastMessage?.content || item.lastMessage || "No message", 
-        avatar: item.avatar || null, 
-        time: item.created_at, 
-      }));
+      const conversations = response.data.map((item) => {
+        console.log('Processing conversation:', item); // Log chi tiết từng conversation
+        
+        return {
+          id: item.conversation_id,
+          name: item.group_name || "",
+          isGroup: item.type === "GROUP",
+          participants: item.participants || [],
+          participantDetails: item.participant_details || [],
+          lastMessage: item.lastMessage?.content || item.lastMessage || "No message",
+          avatar: item.type === "GROUP" ? item.group_avatar : item.avatar,
+          defaultAvatar: item.type === "GROUP" ? '/group-avatar.png' : '/OIP.png',
+          time: item.created_at,
+          type: item.type
+        };
+      });
+      
+      console.log("Mapped conversations:", conversations); // Log để debug
       return conversations;
     } catch (err) {
       console.error("Lỗi khi fetch conversations:", err.message || err);
