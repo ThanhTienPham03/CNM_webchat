@@ -33,7 +33,7 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
                 otherUserDetail = { fullname: 'Người dùng không tồn tại', avatar_url: null }; // Gán thông tin mặc định
               } else {
                 console.error(`Không thể lấy thông tin người dùng với ID: ${otherUserId}`, err);
-                otherUserDetail = { fullname: 'Lỗi khi lấy thông tin', avatar_url: null }; // Gán thông tin lỗi
+                otherUserDetail = { fullname: 'Người lạ', avatar_url: null }; // Gán thông tin lỗi
               }
             }
           }
@@ -112,74 +112,79 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
     });
   };
 
-  if (error) {
-    return (
-      <div className="text-danger" style={{ color: 'red', textAlign: 'center', marginTop: '20px' }}>
-        <p>{error}</p>
-      </div>
-    );
-  }
-
-  if (!conversations || conversations.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', marginTop: '20px' }}>
-        <p>Không có cuộc trò chuyện nào.</p>
-      </div>
-    );
-  }
-
   return (
-    <ul className="list-group">
-      {conversations.map((item, index) => {
-        console.log('Render item:', item); // Kiểm tra từng phần tử
-        console.log('lastMessage:', item.lastMessage); // Kiểm tra lastMessage
-  
-        if (!item.id) {
-          console.error('Thiếu thuộc tính id cho item:', item);
-          return null;
-        }
-  
-        const avatarUrl = item.otherUserDetail?.avatar_url || '/OIP.png';
-        const fullname = item.otherUserDetail?.fullname || `Cuộc trò chuyện ${index + 1}`;
-        const lastMessageContent = typeof item.lastMessage === 'object' && item.lastMessage !== null
-          ? item.lastMessage.content || 'Chưa có tin nhắn'
-          : item.lastMessage || 'Chưa có tin nhắn';
-        const time = formatTime(item.lastMessage?.updated_at);
-  
-        return (
-          <li
-            key={item.id}
-            className="list-group-item d-flex align-items-center conversation-item p-3"
-            onClick={() => onConversationSelect(item.id, fullname)}
-            style={{
-              cursor: 'pointer',
-              transition: 'background-color 0.3s',
-              border: '1px solid #dee2e6',
-              borderRadius: '8px',
-              marginBottom: '0.5rem',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9fa')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
-          >
-            <img
-              src={avatarUrl}
-              alt="Avatar"
-              className="rounded-circle me-3 border border-primary"
-              style={{ width: '50px', height: '50px', objectFit: 'cover' }}
-            />
-            <div className="flex-grow-1">
-              <div className="d-flex justify-content-between align-items-center">
-                <strong className="text-primary fs-5">{fullname}</strong>
-                <small className="text-muted">{time}</small>
-              </div>
-              <p className="text-muted mb-0 mt-1" style={{ fontSize: '0.95rem' }}>
-                {lastMessageContent} 
-              </p>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="conversation-list-container">
+      {error && (
+        <div className="text-danger" style={{ color: 'red', textAlign: 'center', marginTop: '20px' }}>
+          <p>{error}</p>
+        </div>
+      )}
+
+      {!conversations || conversations.length === 0 ? (
+        <div style={{ textAlign: 'center', marginTop: '20px' }}>
+          <p>Không có cuộc trò chuyện nào.</p>
+        </div>
+      ) : (
+        <div className="conversation-list" style={{
+          height: 'calc(100vh - 120px)',
+          overflowY: 'auto',
+          paddingRight: '8px'
+        }}>
+          <ul className="list-group">
+            {conversations.map((item, index) => {
+              console.log('Render item:', item);
+              console.log('lastMessage:', item.lastMessage);
+
+              if (!item.id) {
+                console.error('Thiếu thuộc tính id cho item:', item);
+                return null;
+              }
+
+              const avatarUrl = item.otherUserDetail?.avatar_url || '/OIP.png';
+              const fullname = item.otherUserDetail?.fullname || `Cuộc trò chuyện ${index + 1}`;
+              const lastMessageContent = typeof item.lastMessage === 'object' && item.lastMessage !== null
+                ? item.lastMessage.content || 'Chưa có tin nhắn'
+                : item.lastMessage || 'Chưa có tin nhắn';
+              const time = formatTime(item.lastMessage?.updated_at);
+
+              return (
+                <li
+                  key={item.id}
+                  className="list-group-item d-flex align-items-center conversation-item p-3"
+                  onClick={() => onConversationSelect(item.id, fullname)}
+                  style={{
+                    cursor: 'pointer',
+                    transition: 'background-color 0.3s',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '8px',
+                    marginBottom: '0.5rem',
+                    backgroundColor: 'white'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8f9fa')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'white')}
+                >
+                  <img
+                    src={avatarUrl}
+                    alt="Avatar"
+                    className="rounded-circle me-3 border border-primary"
+                    style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                  />
+                  <div className="flex-grow-1">
+                    <div className="d-flex justify-content-between align-items-center">
+                      <strong className="text-primary fs-5">{fullname}</strong>
+                      <small className="text-muted">{time}</small>
+                    </div>
+                    <p className="text-muted mb-0 mt-1" style={{ fontSize: '0.95rem' }}>
+                      {lastMessageContent}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 };
 
