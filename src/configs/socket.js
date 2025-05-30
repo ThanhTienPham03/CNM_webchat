@@ -1,11 +1,13 @@
 import { io } from 'socket.io-client';
+import { API_BASE_URL,API_URL } from '../api/apiConfig'; // Đường dẫn đến tệp cấu hình API của bạn
 
-const socket = io('http://localhost:3000', {
+const socket = io(`${API_URL}`, {
+
   autoConnect: true,
   withCredentials: true,
   transports: ['websocket'],
   cors: {
-    origin: 'http://localhost:5173',
+    origin: `${API_BASE_URL}:5173`,
     methods: ['GET', 'POST'],
     credentials: true
   },

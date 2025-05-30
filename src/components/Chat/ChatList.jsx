@@ -33,7 +33,8 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
                 return {
                   id: participantId,
                   fullname: memberDetail.fullname || 'Chưa cập nhật tên',
-                  avatar_url: memberDetail.avatar_url || '/OIP.png'
+                  avatar_url: memberDetail.avatar_url || '/OIP.png',
+                  status: memberDetail.status || 'OFFLINE'
                 };
               } catch (err) {
                 console.error(`Error fetching member details for ${participantId}:`, err);
@@ -80,7 +81,8 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
               otherUserDetail: {
                 ...otherUserDetail,
                 fullname: otherUserDetail.fullname || 'Chưa cập nhật tên',
-                avatar_url: otherUserDetail.avatar_url || '/OIP.png'
+                avatar_url: otherUserDetail.avatar_url || '/OIP.png',
+                status: otherUserDetail.status || 'OFFLINE'
               },
               displayName: otherUserDetail.fullname || 'Chưa cập nhật tên'
             };
@@ -231,6 +233,22 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
                         e.target.src = item.isGroup ? '/group-avatar.png' : '/OIP.png';
                       }}
                     />
+                    {!item.isGroup && (
+                      <span
+                        className="position-absolute"
+                        style={{
+                          bottom: 4,
+                          right: 12,
+                          width: '14px',
+                          height: '14px',
+                          borderRadius: '50%',
+                          border: '2px solid white',
+                          backgroundColor: (item.otherUserDetail?.status === 'ONLINE') ? '#28a745' : '#adb5bd',
+                          display: 'block'
+                        }}
+                        title={item.otherUserDetail?.status === 'ONLINE' ? 'Online' : 'Offline'}
+                      />
+                    )}
                     {item.isGroup && (
                       <div 
                         className="position-absolute"

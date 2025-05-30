@@ -1,4 +1,5 @@
-const USER_DETAIL_API = "http://localhost:3000/api/userDetails";
+import { API_URL } from "./apiConfig";
+const USER_DETAIL_API = `${API_URL}/api/userDetails`;
 
 
 export const fetchUserDetail = async (user_id, accessToken) => {

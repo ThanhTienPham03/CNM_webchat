@@ -9,6 +9,7 @@ import { FaSearch } from 'react-icons/fa';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../redux/slices/authSlice';
 import axios from 'axios';
+import { API_URL } from '../../api/apiConfig'; // Đường dẫn đến tệp apiConfig.js 
 
 const Header = () => {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ const Header = () => {
 
   useEffect(() => {
     if (user) {
+      console.log('User from Redux:', user);
       setUserDetail(user); 
     }
   }, [user]);
@@ -33,11 +35,11 @@ const Header = () => {
 
       if (accessToken && userCookie) {
         const user = JSON.parse(userCookie);
-        // console.log('Parsed User:', user);
+        console.log('Parsed User:', user);
 
         try {
           const detail = await getUserDetailById(user.id, accessToken);
-          // console.log('Fetched User Detail:', detail);
+          console.log('Fetched User Detail:', detail);
           setUserDetail(detail);
         } catch (error) {
           console.error('Error fetching user detail:', error);
@@ -53,8 +55,8 @@ const Header = () => {
     console.log('Current showProfile state:', showProfile);
     if (!userDetail) {
       console.warn('userDetail is null or undefined. Cannot show profile.');
-    } else if (!userDetail.id) {
-      console.warn('userDetail.id is missing. Cannot show profile.');
+    } else if (!userDetail.user_id) {
+      console.warn('userDetail.user_id is missing. Cannot show profile.');
     }
     setShowProfile(true); 
   };
@@ -67,7 +69,7 @@ const Header = () => {
     try {
       const accessToken = Cookies.get('accessToken');
       if (accessToken) {
-        const response = await axios.post('http://localhost:3000/auth/logout', {}, {
+        const response = await axios.post(`${API_URL}/auth/logout`, {}, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
@@ -92,7 +94,7 @@ const Header = () => {
     <div className="d-flex align-items-center justify-content-between p-3 text-white shadow-sm" style={{ backgroundColor: '#6a11cb', borderBottom: '2px solid #4a0e9e' }} >
       {userDetail && (
         <div className="d-flex align-items-center">
-          <img src={userDetail.avatar_url || 'default-avatar.png'} alt="User Avatar" className="rounded-circle me-3" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer', border: '2px solid #fff' }} onClick={handleAvatarClick} />
+          <img src={userDetail.avatar_url || './public/OIP.png'} alt="User Avatar" className="rounded-circle me-3" style={{ width: '60px', height: '60px', objectFit: 'cover', cursor: 'pointer', border: '2px solid #fff' }} onClick={handleAvatarClick} />
           <h5 className="mb-0" style={{ fontWeight: 'bold', fontSize: '20px', color: '#fff', marginRight: '15px' }}>
             {userDetail.fullname || 'Tên người dùng'}
           </h5>

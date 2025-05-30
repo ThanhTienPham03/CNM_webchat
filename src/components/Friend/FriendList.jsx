@@ -6,7 +6,9 @@ import { debounce } from 'lodash';
 import axios from 'axios';
 import { searchUser } from '../../api/friendAPI';
 
-const FriendList = ({ userId, accessToken, navigate }) => {
+import { API_URL } from '../../api/apiConfig';
+
+const FriendList = ({ userId, accessToken, navigate, onConversationSelect }) => {
     const [keyword, setKeyword] = useState("");
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -16,8 +18,6 @@ const FriendList = ({ userId, accessToken, navigate }) => {
     const [error, setError] = useState(null);
     const [friendRequests, setFriendRequests] = useState([]);
     const [friendRequestsDetails, setFriendRequestsDetails] = useState([]);
-    const API_URL = "http://localhost:3000";
-
     const fetchUserDetail = async (userId, token) => {
         try {
             const res = await axios.get(`${API_URL}/api/users/${userId}`, {
@@ -99,22 +99,68 @@ const FriendList = ({ userId, accessToken, navigate }) => {
         }
 
         try {
-            await axios.post(`${API_URL}/api/friends/accept`,
-                { user_id: userId, friend_id },
-                { headers: { Authorization: `Bearer ${accessToken}` } }
+            // Convert to numbers to ensure correct data type
+            const numericUserId = Number(userId);
+            const numericFriendId = Number(friend_id);
+
+            console.log('Đang chấp nhận lời mời kết bạn:', {
+                user_id: numericUserId,
+                friend_id: numericFriendId
+            });
+
+            // Accept friend request
+            const acceptResponse = await axios.post(
+                `${API_URL}/api/friends/accept`,
+                { 
+                    user_id: numericUserId, 
+                    friend_id: numericFriendId 
+                },
+                { 
+                    headers: { 
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json"
+                    } 
+                }
             );
 
-            // Tạo cuộc trò chuyện mới sau khi chấp nhận kết bạn
-            await axios.post(`${API_URL}/api/conversations/create`,
-                { user_id: userId, friend_id },
-                { headers: { Authorization: `Bearer ${accessToken}` } }
+            console.log('Kết quả chấp nhận kết bạn:', acceptResponse.data);
+
+            // Create new conversation
+            console.log('Đang tạo cuộc trò chuyện mới:', {
+                participants: [numericUserId, numericFriendId]
+            });
+
+            const conversationResponse = await axios.post(
+                `${API_URL}/api/conversations/add`,
+                { 
+                    participants: [numericUserId, numericFriendId]
+                },
+                { 
+                    headers: { 
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json"
+                    } 
+                }
             );
 
-            fetchFriends();
-            fetchFriendRequests();
+            console.log('Kết quả tạo cuộc trò chuyện:', conversationResponse.data);
+
+            // Refresh data
+            await Promise.all([
+                fetchFriends(),
+                fetchFriendRequests()
+            ]);
+
+            toast.success("Đã chấp nhận lời mời kết bạn thành công!");
         } catch (err) {
-            console.error("Lỗi khi chấp nhận kết bạn", err);
-            toast.error("Không thể chấp nhận yêu cầu kết bạn. Vui lòng thử lại.");
+            console.error("Chi tiết lỗi khi chấp nhận kết bạn:", {
+                message: err.message,
+                response: err.response?.data,
+                status: err.response?.status
+            });
+            
+            const errorMessage = err.response?.data?.message || err.message || "Không thể chấp nhận yêu cầu kết bạn.";
+            toast.error(errorMessage);
         }
     };
 
@@ -293,10 +339,24 @@ const FriendList = ({ userId, accessToken, navigate }) => {
     };
 
     const handleChatPress = async (otherUserId, otherUserDetail) => {
+        if (!otherUserId) {
+            console.error('otherUserId không hợp lệ:', otherUserId);
+            toast.error("Không thể xác định người dùng. Vui lòng thử lại.");
+            return;
+        }
+
         try {
-            // Kiểm tra xem conversations.data có phải là mảng không
+            console.log('Bắt đầu xử lý handleChatPress với:', {
+                currentUserId: userId,
+                otherUserId: otherUserId,
+                otherUserDetail: otherUserDetail,
+                accessToken: accessToken ? 'Có token' : 'Không có token'
+            });
+            
+            // Kiểm tra xem đã có conversation chưa
+            console.log('Đang gọi API lấy danh sách conversations...');
             const conversations = await axios.get(
-                `${API_URL}/api/conversations/${userId}`,
+                `${API_URL}/api/conversations/user/${userId}`,
                 {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
@@ -305,19 +365,42 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                 }
             );
 
-            let conversation = Array.isArray(conversations.data)
-                ? conversations.data.find(
-                    (conv) =>
-                        Array.isArray(conv.participants) &&
-                        conv.participants.includes(otherUserId)
-                )
-                : null;
+            console.log('Kết quả API conversations:', {
+                status: conversations.status,
+                data: conversations.data
+            });
 
-            // Nếu chưa có, tạo mới cuộc trò chuyện
+            let conversation = null;
+            if (Array.isArray(conversations.data)) {
+                conversation = conversations.data.find(
+                    (conv) => {
+                        const hasParticipant = Array.isArray(conv.participants) && 
+                            conv.participants.includes(Number(otherUserId));
+                        console.log('Kiểm tra conversation:', {
+                            convId: conv.conversation_id,
+                            participants: conv.participants,
+                            otherUserId: Number(otherUserId),
+                            hasParticipant: hasParticipant
+                        });
+                        return hasParticipant && conv.type === 'SINGLE';
+                    }
+                );
+            }
+
+            // Nếu chưa có conversation, tạo mới
             if (!conversation) {
+                console.log('Chưa có cuộc trò chuyện, đang tạo mới...');
+                toast.info('Đang tạo cuộc trò chuyện mới...');
+                
+                const requestData = {
+                    participants: [Number(userId), Number(otherUserId)],
+                    type: 'SINGLE'
+                };
+                console.log('Dữ liệu gửi lên server để tạo conversation:', requestData);
+
                 const response = await axios.post(
                     `${API_URL}/api/conversations/add`,
-                    { user_id: userId, friend_id: otherUserId },
+                    requestData,
                     {
                         headers: {
                             Authorization: `Bearer ${accessToken}`,
@@ -325,16 +408,38 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                         },
                     }
                 );
+                console.log('Kết quả tạo conversation mới:', {
+                    status: response.status,
+                    data: response.data
+                });
                 conversation = response.data;
+                toast.success('Đã tạo cuộc trò chuyện mới!');
             }
 
-            // Điều hướng tới trang chat với user đó
-            navigate(`/chat/${conversation.conversation_id}`, {
-                state: { otherUserDetail },
-            });
+            // Cập nhật selectedConversationId để hiển thị trong ChatBox
+            if (conversation && conversation.conversation_id) {
+                console.log('Đang chuyển đến cuộc trò chuyện:', {
+                    conversationId: conversation.conversation_id,
+                    hasCallback: !!onConversationSelect
+                });
+                if (onConversationSelect) {
+                    onConversationSelect(conversation.conversation_id, otherUserDetail.fullname || 'Tên không xác định');
+                    toast.success(`Đã mở cuộc trò chuyện với ${otherUserDetail.fullname || 'Tên không xác định'}`);
+                } else {
+                    console.error('Không có callback onConversationSelect');
+                    toast.error('Không thể mở cuộc trò chuyện. Vui lòng thử lại.');
+                }
+            } else {
+                throw new Error('Không thể xác định conversation_id');
+            }
         } catch (error) {
-            console.error("Lỗi khi xử lý cuộc trò chuyện:", error);
-            toast.error("Không thể mở cuộc trò chuyện. Vui lòng thử lại.");
+            console.error("Chi tiết lỗi khi xử lý cuộc trò chuyện:", {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                requestData: error.config?.data
+            });
+            toast.error(error.response?.data?.message || "Không thể mở cuộc trò chuyện. Vui lòng thử lại.");
         }
     };
 
@@ -460,17 +565,36 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                     <ul className="list-group">
                         {friendRequestsDetails.map((request) => (
                             <li key={request.id} className="list-group-item d-flex justify-content-between align-items-center">
-                                <span>{request.userDetail?.fullname || 'Ẩn danh'}</span>
+                                <div className="d-flex align-items-center">
+                                    <img
+                                        src={request.userDetail?.avatar_url || 'OIP.png'}
+                                        alt="Avatar"
+                                        className="rounded-circle me-2"
+                                        style={{ width: '32px', height: '32px' }}
+                                    />
+                                    <div>
+                                        <div>
+                                            {request.userDetail?.fullname
+                                                || request.userDetail?.username
+                                                || request.userDetail?.email
+                                                || request.friend_id
+                                                || 'Ẩn danh'}
+                                        </div>
+                                        {request.userDetail?.email && (
+                                            <div className="text-muted small">{request.userDetail.email}</div>
+                                        )}
+                                    </div>
+                                </div>
                                 <div className="d-flex gap-2">
                                     <button
                                         className="btn btn-sm btn-primary"
-                                        onClick={() => acceptFriendRequest(request.user_id)}
+                                        onClick={() => acceptFriendRequest(request.friend_id)}
                                     >
                                         Chấp nhận
                                     </button>
                                     <button
                                         className="btn btn-sm btn-danger"
-                                        onClick={() => cancelFriendRequest(request.user_id)}
+                                        onClick={() => cancelFriendRequest(request.friend_id)}
                                     >
                                         Từ chối
                                     </button>
@@ -493,7 +617,7 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                 ) : (
                     <ul className="list-group">
                         {friends.map((userDetail, index) => (
-                            <li key={`${userDetail?.user_id || index}-${userDetail?.fullname || index}`} className="list-group-item d-flex justify-content-between align-items-center">
+                            <li key={`${userDetail?.id || index}-${userDetail?.fullname || index}`} className="list-group-item d-flex justify-content-between align-items-center">
                                 <div className="d-flex align-items-center">
                                     <img
                                         src={userDetail?.avatar_url || 'OIP.png'}
@@ -505,7 +629,17 @@ const FriendList = ({ userId, accessToken, navigate }) => {
                                 </div>
                                 <button
                                     className="btn btn-sm btn-info"
-                                    onClick={() => handleChatPress(userDetail?.user_id, userDetail)}
+                                    onClick={() => {
+                                        console.log('Click vào nút nhắn tin với user:', userDetail);
+                                        // Sử dụng user_id thay vì id
+                                        const otherUserId = userDetail?.user_id || userDetail?.id;
+                                        if (!otherUserId) {
+                                            console.error('Không tìm thấy ID của người dùng:', userDetail);
+                                            toast.error("Không thể xác định người dùng. Vui lòng thử lại.");
+                                            return;
+                                        }
+                                        handleChatPress(otherUserId, userDetail);
+                                    }}
                                 >
                                     Nhắn tin
                                 </button>

@@ -24,8 +24,10 @@ export const updateUserDetail = async (userId, userData, token) => {
     const config = {
         headers: {
             Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
         },
     };
+    
     const response = await axios.put(`${API_BASE_URL}/api/userDetails/update/${userId}`, userData, config);
     return response.data;
 };
@@ -54,10 +56,19 @@ export const getUserDetailById = async (userId, token) => {
         !avatar_url
     ) {
         console.warn('Incomplete user details received:', userDetails);
-        return { fullname: fullname || '', age: age || 0, gender: typeof gender === 'boolean' ? gender : null, avatar_url: avatar_url || '' };
+        return { 
+            user_id: userId,
+            fullname: fullname || '', 
+            age: age || 0, 
+            gender: typeof gender === 'boolean' ? gender : null, 
+            avatar_url: avatar_url || '' 
+        };
     }
 
-    return userDetails;
+    return {
+        ...userDetails,
+        user_id: userId
+    };
 };
 
 export const sendOTP = async (email) => {

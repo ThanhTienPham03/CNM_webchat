@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Form, Button, Container, Row, Col, Alert } from 'react-bootstrap';
+import { API_URL } from '../../api/apiConfig'; // Đường dẫn đến tệp apiConfig.js
 
 const RegisterForm = () => {
     const [formData, setFormData] = useState({
         username: '',
+        fullname:'',
         email: '',
         phone: '',
         password: '',
@@ -20,8 +22,8 @@ const RegisterForm = () => {
     };
 
     const validateForm = () => {
-        const { username, email, phone, password, passwordConfirm } = formData;
-        if (!username || !email || !phone || !password || !passwordConfirm) {
+        const { username, email, phone, password, passwordConfirm , fullname} = formData;
+        if (!username || !email || !phone || !fullname || !password || !passwordConfirm) {
             return 'Vui lòng điền đầy đủ thông tin.';
         }
         if (password !== passwordConfirm) {
@@ -39,7 +41,7 @@ const RegisterForm = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:3000/auth/register', {
+            const response = await fetch(`${API_URL}/auth/register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
@@ -66,7 +68,7 @@ const RegisterForm = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:3000/auth/verifyOtp', {
+            const response = await fetch(`${API_URL}/auth/verifyOtp`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
@@ -129,6 +131,7 @@ const RegisterForm = () => {
                         onSubmit={otpSent ? handleVerifyOtp : handleSubmit}
                     >
                         {renderInput('username', 'Tên đăng nhập', 'text', 'Nhập tên đăng nhập')}
+                        {renderInput('fullname', 'Tên người dùng', 'text', 'Nhập tên người dùng')}
                         {renderInput('email', 'Email', 'email', 'Nhập email của bạn')}
                         {renderInput('phone', 'Số điện thoại', 'text', 'Nhập số điện thoại')}
                         {renderInput('password', 'Mật khẩu', 'password', 'Nhập mật khẩu')}

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { fetchNotifications } from '../api/notificationAPI';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import './NotificationPage.css';
 
 const NotificationPage = () => {
   const [notifications, setNotifications] = useState([]);
@@ -40,7 +39,7 @@ const NotificationPage = () => {
 
   return (
     <div className="container mt-4">
-      <h1 className="text-center mb-4 text-primary ">Notifications</h1>
+      {/* <h1 className="text-center mb-4 text-primary ">Notifications</h1> */}
       <ul className="list-group y-scroll">
         {notifications.map((notification, index) => (
           <li key={index} className="list-group-item">

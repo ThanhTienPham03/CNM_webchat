@@ -1,6 +1,7 @@
 import axios from "axios";
+import {API_URL} from "./apiConfig";
 
-const API_BASE_URL = "http://localhost:3000/api/conversations";
+const API_BASE_URL = `${API_URL}/api/conversations`;
 
 const ConversationApi = {
   async fetchConversationsByUserId(userId, accessToken) {
@@ -19,14 +20,21 @@ const ConversationApi = {
 
       const conversations = response.data.map((item) => {
         console.log('Processing conversation:', item); // Log chi tiết từng conversation
-        
+        let lastMessageObj = {};
+        if (typeof item.lastMessage === 'object' && item.lastMessage !== null) {
+          lastMessageObj = item.lastMessage;
+        } else if (typeof item.lastMessage === 'string') {
+          lastMessageObj = { content: item.lastMessage };
+        } else {
+          lastMessageObj = { content: "No message" };
+        }
         return {
           id: item.conversation_id,
           name: item.group_name || "",
           isGroup: item.type === "GROUP",
           participants: item.participants || [],
           participantDetails: item.participant_details || [],
-          lastMessage: item.lastMessage?.content || item.lastMessage || "No message",
+          lastMessage: lastMessageObj,
           avatar: item.type === "GROUP" ? item.group_avatar : item.avatar,
           defaultAvatar: item.type === "GROUP" ? '/group-avatar.png' : '/OIP.png',
           time: item.created_at,

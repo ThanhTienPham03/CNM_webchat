@@ -10,6 +10,7 @@ import { useSelector } from 'react-redux';
 import axios from 'axios';
 import NotificationPage from './NotificationPage';
 import { initializeSocket } from '../utils/socket';
+import { API_URL } from "../api/apiConfig"; // Đường dẫn đến tệp apiConfig.js
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
@@ -44,8 +45,21 @@ const Home = () => {
   
   // Initialize navigate using useNavigate
   const navigate = useNavigate();
-  const API_URL = "http://localhost:3000"; // Use environment variable or default to localhost
   const user = useSelector((state) => state.auth.user); // Get user from Redux store
+
+  // Chuyển fetchConversationDetails ra ngoài useEffect
+  const fetchConversationDetails = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/conversations/${userId}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      setConversationDetails(response.data);
+    } catch (error) {
+      console.error("Error fetching conversation details:", error);
+    }
+  };
 
   useEffect(() => {
     if (!userId || !accessToken) {
@@ -69,33 +83,23 @@ const Home = () => {
         //thong bao toi server user online
         socket.emit("online", { user: user });
       });
-    const fetchConversationDetails = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/api/conversations/${userId}`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        setConversationDetails(response.data);
-      } catch (error) {
-        console.error("Error fetching conversation details:", error);
-      }
-    };
 
     if (userId && accessToken) {
       fetchConversationDetails();
     }
   }, [userId, accessToken]);
 
+  // Gọi lại fetchConversationDetails khi chọn hoặc tạo conversation mới
   const handleConversationSelect = (conversationId, conversationName) => {
     setSelectedConversationId(conversationId);
     setSelectedConversationName(conversationName);
+    fetchConversationDetails();
   };
 
   const renderComponent = () => {
     switch (activeComponent) {
       case "ChatList":
-        return <ChatList userId={userId} accessToken={accessToken} chats={chats} onConversationSelect={handleConversationSelect} />;
+        return <ChatList userId={userId} accessToken={accessToken} onConversationSelect={handleConversationSelect} />;
       case "FriendList":
         return (
           <ErrorBoundary>
@@ -104,10 +108,11 @@ const Home = () => {
               accessToken={accessToken} 
               navigate={navigate} 
               conversationDetails={conversationDetails} 
+              onConversationSelect={handleConversationSelect}
             />
           </ErrorBoundary>
         );
-        case "Notifications":
+      case "Notifications":
         return <NotificationPage userId={userId} accessToken={accessToken} />;
       default:
         return null;

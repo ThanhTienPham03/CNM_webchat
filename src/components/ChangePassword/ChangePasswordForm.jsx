@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
+import { API_URL } from '../../api/apiConfig'; // Đường dẫn đến tệp apiConfig.js
 
 const validateToken = async (token) => {
     try {
@@ -8,7 +9,7 @@ const validateToken = async (token) => {
         const now = Math.floor(Date.now() / 1000);
 
         if (decoded.exp < now) {
-            const res = await axios.post('http://localhost:3000/auth/refreshToken', { token });
+            const res = await axios.post(`${API_URL}/auth/refreshToken`, { token });
             return res.data.newToken;
         }
 
@@ -52,7 +53,7 @@ const ChangePasswordForm = () => {
             const validToken = await validateToken(accessToken);
 
             // Step 1: Check old password
-            const verifyRes = await axios.post('http://localhost:3000/api/users/checkMatchPassword',
+            const verifyRes = await axios.post(`${API_URL}/api/users/checkMatchPassword`,
                 { oldPassword },
                 { headers: { Authorization: `Bearer ${validToken}` } }
             );
@@ -64,7 +65,7 @@ const ChangePasswordForm = () => {
             }
 
             // Step 2: Update new password
-            const updateRes = await axios.post('http://localhost:3000/api/users/updatePassword',
+            const updateRes = await axios.post(`${API_URL}/api/users/updatePassword`,
                 { newPassword },
                 { headers: { Authorization: `Bearer ${validToken}` } }
             );
@@ -100,10 +101,10 @@ const ChangePasswordForm = () => {
                 color: '#333'
             }}
         >
-            <h2 style={{ textAlign: 'center' }}>Change Password</h2>
+           
 
             <div style={{ marginBottom: '15px' }}>
-                <label>Old Password:</label>
+                <label>Mật khẩu cũ:</label>
                 <input
                     type="password"
                     value={oldPassword}
@@ -114,7 +115,7 @@ const ChangePasswordForm = () => {
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-                <label>New Password:</label>
+                <label>Mật khẩu mới:</label>
                 <input
                     type="password"
                     value={newPassword}
@@ -125,7 +126,7 @@ const ChangePasswordForm = () => {
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-                <label>Confirm New Password:</label>
+                <label>Xác nhận mật khẩu mới:</label>
                 <input
                     type="password"
                     value={confirmPassword}

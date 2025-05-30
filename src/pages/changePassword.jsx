@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ChangePasswordForm from '../components/ResetPassword/ChangePasswordForm';
+import ChangePasswordForm from '../components/ChangePassword/ChangePasswordForm';
 import { Container, Row, Col } from 'react-bootstrap';
 
 const ChangePassword = () => {

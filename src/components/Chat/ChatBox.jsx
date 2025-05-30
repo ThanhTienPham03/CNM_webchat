@@ -5,6 +5,17 @@ import Picker from "emoji-picker-react";
 import axios from "axios";
 import { useSocket } from "../../hooks/useSocket";
 
+// Hàm debounce để giới hạn tần suất gọi hàm
+const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  };
+};
+
 const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -15,13 +26,17 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [participants, setParticipants] = useState([]);
   const [lastSeenMessageId, setLastSeenMessageId] = useState(null);
-
-  // Thêm state để kiểm soát refresh
+  const [userStatuses, setUserStatuses] = useState({});
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingContent, setEditingContent] = useState("");
+  const [lastKey, setLastKey] = useState(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [shouldRefresh, setShouldRefresh] = useState(false);
-  const [lastMessageTime, setLastMessageTime] = useState(null);
-
+  const [justSentMessage, setJustSentMessage] = useState(false);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const isFetchingRef = useRef(false); // Cờ kiểm soát gọi API
   const baseURL = "http://localhost:3000";
   const { 
     socket, 
@@ -35,25 +50,17 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
 
   const cleanFileName = (fileName) => {
     if (!fileName) return "Unnamed File";
-    
-    // Remove timestamp if present
     fileName = fileName.replace(/^\d{2}:\d{2}:\d{2}\s/, '');
-    
-    // If the file name is just a UUID with extension, try to make it more readable
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[^.]+)?$/.test(fileName)) {
       const extension = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')) : '';
       return `File${extension}`;
     }
-    
-    // Clean up file name if it's a path
     if (fileName.includes('/')) {
       fileName = fileName.split('/').pop();
     }
-    
     return fileName;
   };
 
-  // Add function to manage file names in localStorage
   const storeFileName = (fileUrl, originalName) => {
     const fileNames = JSON.parse(localStorage.getItem('fileNames') || '{}');
     fileNames[fileUrl] = originalName;
@@ -65,30 +72,29 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     return fileNames[fileUrl];
   };
 
+  const normalizeParticipants = (participants) => {
+    if (Array.isArray(participants)) return participants;
+    if (participants && typeof participants === 'object' && participants.values) {
+      return Array.isArray(participants.values) ? participants.values : [];
+    }
+    return [];
+  };
+
   const extractFileNameFromUrl = (url) => {
     if (!url) return "Unknown File";
-    
     try {
-      // Get the last part of the URL
       const urlParts = url.split('/');
       let fileName = urlParts[urlParts.length - 1];
-      
-      // Try to decode the URL-encoded name
       try {
         fileName = decodeURIComponent(fileName);
       } catch (e) {
         console.error('Error decoding filename:', e);
       }
-
-      // Remove any query parameters
       fileName = fileName.split('?')[0];
-      
-      // If it's a UUID, try to make it more readable
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[^.]+$/.test(fileName)) {
         const extension = fileName.substring(fileName.lastIndexOf('.'));
         return `Document${extension}`;
       }
-      
       return fileName;
     } catch (e) {
       console.error('Error extracting filename:', e);
@@ -97,12 +103,10 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   };
 
   const normalizeMessage = (msg) => {
-    
     let messageType = (msg.type || msg.message_type || "text").toLowerCase();
     if (messageType === "pdf") {
       messageType = "file";
     }
-    // Normalize image_text to image type
     if (messageType === "image_text") {
       messageType = "image";
     }
@@ -113,22 +117,19 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     let url = null;
     
     if (messageType === "file" || messageType === "image") {
-      // Check all possible URL fields
-      url = msg.url  || msg.file_url || msg.image_url;
-
+      url = msg.url || msg.file_url || msg.image_url;
       if (messageType === "file") {
         fileUrl = url;
         fileName = getStoredFileName(fileUrl) ||
                   (msg.content && msg.content.includes('.') ? msg.content : null) ||
                   extractFileNameFromUrl(fileUrl);
       } else if (messageType === "image") {
-        // For images, check content if it's a URL
         imageUrl = url;
         fileName = msg.fileName || msg.content || extractFileNameFromUrl(imageUrl);
       }
     }
 
-    const normalized = {
+    return {
       id: msg.message_id || msg.id,
       sender: Number(msg.sender),
       content: msg.content || "",
@@ -141,12 +142,10 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       conversation_id: msg.conversation_id,
       fileName: fileName
     };
-    return normalized;
   };
 
   const formatFileName = (fileName) => {
     if (!fileName) return "Tải file";
- 
     const maxLength = 30;
     if (fileName.length > maxLength) {
       const extension = fileName.split('.').pop();
@@ -156,20 +155,38 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     return fileName;
   };
 
-  const fetchMessages = useCallback(async () => {
-    if (!conversationId || !token) return;
+  // Sửa fetchMessages để nhận lastKeyArg làm tham số
+  const fetchMessages = useCallback(async (lastKeyArg = null) => {
+    if (!conversationId || !token || isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
     try {
-      const data = await MessageAPI.fetchMessages(conversationId, token);
-      const formattedMessages = data.map(msg => normalizeMessage(msg));
-      setMessages(formattedMessages);
-      setShouldRefresh(false);
-      console.log("Fetched messages:", formattedMessages);
-      
+      const { messages: newMessages, lastKey: newLastKey } = await MessageAPI.fetchMessages(conversationId, token, lastKeyArg);
+      console.log("Total messages fetched:", newMessages.length);
+
+      const formattedMessages = newMessages.map(msg => normalizeMessage(msg)).reverse();
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newUniqueMessages = formattedMessages.filter(m => !existingIds.has(m.id));
+        const updatedMessages = [ ...newUniqueMessages, ...prev ];
+        console.log("Fetched messages:", {
+          count: formattedMessages.length,
+          lastKey: newLastKey,
+          hasMore: !!newLastKey,
+          currentMessagesCount: updatedMessages.length
+        });
+        return updatedMessages;
+      });
+      setLastKey(newLastKey);
+      setHasMoreMessages(!!newLastKey);
     } catch (error) {
       console.error("Error fetching messages:", error);
+      setLastKey(null);
+      setHasMoreMessages(false);
     } finally {
       setLoading(false);
+      setShouldRefresh(false); 
+      isFetchingRef.current = false;
     }
   }, [conversationId, token]);
 
@@ -179,7 +196,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       const res = await axios.get(`${baseURL}/api/conversations/${conversationId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setParticipants(res.data.participants);
+      setParticipants(normalizeParticipants(res.data.participants));
     } catch (error) {
       console.error("Error fetching participants:", error);
     }
@@ -202,11 +219,14 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
 
   useEffect(() => {
     if (socket) {
-      // Listen for new messages
       socket.on('new message', (message) => {
         if (message.conversation_id === conversationId) {
           const normalized = normalizeMessage(message);
-          setMessages(prev => [...prev, normalized]);
+          setMessages(prev => {
+            if (prev.some(msg => msg.id === normalized.id)) return prev;
+            return [...prev, normalized];
+          });
+          // Không gọi fetchMessages ở đây
         }
       });
       socket.on('message revoked', message => {
@@ -214,28 +234,34 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           setMessages(prev => 
             prev.map(msg => 
               msg.id === message.message_id 
-               ? message: msg
+                ? message : msg
             )
           );
         }
       }); 
       socket.on('message deleted', (message_id) => {
         console.log("Message deleted:", message_id);
-        setMessages(prev =>
-          prev.filter(msg => msg.id !== message_id)
-        );
+        setMessages(prev => prev.filter(msg => msg.id !== message_id));
       });
 
       socket.on('message updated', (updatedMessage) => {
         if (updatedMessage.conversation_id === conversationId) {
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === updatedMessage.id 
-                ? { ...msg, status: updatedMessage.status } 
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === updatedMessage.id
+                ? { ...msg, content: updatedMessage.content, status: updatedMessage.status }
                 : msg
             )
           );
         }
+      });
+
+      socket.on('user online', (userId) => {
+        setUserStatuses((prev) => ({ ...prev, [userId]: 'online' }));
+      });
+
+      socket.on('user offline', (userId) => {
+        setUserStatuses((prev) => ({ ...prev, [userId]: 'offline' }));
       });
 
       return () => {
@@ -243,31 +269,18 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         socket.off('message updated');
         socket.off('message revoked');
         socket.off('message deleted');
+        socket.off('user online');
+        socket.off('user offline');
       };
     }
   }, [socket, conversationId]);
 
-  // Auto refresh messages
+  // Chỉ gọi fetchMessages khi shouldRefresh thay đổi
   useEffect(() => {
-    if (shouldRefresh) {
-      const refreshInterval = setInterval(() => {
-        fetchMessages();
-      }, 1000); // Refresh every 1 second
-
-      return () => clearInterval(refreshInterval);
+    if (shouldRefresh && !isFetchingRef.current) {
+      fetchMessages(lastKey);
     }
-  }, [shouldRefresh, fetchMessages]);
-
-  // Reset refresh after 5 seconds
-  useEffect(() => {
-    if (lastMessageTime) {
-      const timeout = setTimeout(() => {
-        setShouldRefresh(false);
-      }, 5000);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [lastMessageTime]);
+  }, [shouldRefresh, fetchMessages, lastKey]);
 
   const handleSend = async () => {
     if (!newMessage.trim() && !selectedImage && !selectedDocument) {
@@ -290,46 +303,17 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         const file = isImage ? selectedImage : selectedDocument;
         const type = isImage ? "IMAGE" : "FILE";
         
-        console.log("Selected file:", {
-          name: file.name,
-          type: file.type,
-          size: file.size
-        });
-
-        // Always use 'file' as the form field name
         formData.append("file", file);
         formData.append("type", type);
         formData.append("content", newMessage || file.name);
         
         const response = await MessageAPI.sendImageAndText(formData, token);
-        console.log("Response from send file:", response);
-        
         if (response) {
-          // Store file name if it's a file
           if (response.file_url) {
             storeFileName(response.file_url, file.name);
           }
-          
-          const normalized = normalizeMessage({
-            
-            ...response,
-            message_id: response.message_id,
-            type: type,
-            content: newMessage || file.name,
-            url: response.url || response.file_url || response.image_url // Prioritize url field
-          });
-
-          console.log("Normalized new message:", normalized);
-
-          // Emit new message through socket
           socket.emit('send message', response);
-          // console.log("Messages before sending:", messages);
-          
-          // setMessages(prev => [...prev, normalized]);
-          
-          // Kích hoạt auto refresh
-          setShouldRefresh(true);
-          setLastMessageTime(Date.now());
+          setShouldRefresh(true); // Kích hoạt làm mới một lần
         }
       } else {
         const messageData = {
@@ -340,22 +324,14 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           type: "TEXT",
         };
         const response = await MessageAPI.sendMessage(messageData, token);
-        console.log("Response from send message:", response.message);
-        // Emit new message through socket
         socket.emit('send message', response.message);
-        
-        setMessages(prev => [...prev, normalizeMessage(response)]);
-        
-        // Kích hoạt auto refresh
-        setShouldRefresh(true);
-        setLastMessageTime(Date.now());
+        setShouldRefresh(true); // Kích hoạt làm mới một lần
       }
   
-      console.log("Messages after sending:", messages);
-
       setNewMessage("");
       setSelectedImage(null);
       setSelectedDocument(null);
+      setJustSentMessage(true); // Đánh dấu vừa gửi tin nhắn
     } catch (error) {
       console.error("Gửi thất bại:", error);
       alert(error.response?.data?.message || "Gửi tin nhắn thất bại. Vui lòng thử lại.");
@@ -363,29 +339,19 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       setLoading(false);
     }
   };
-  
 
   const handleRevokeMessage = async (messageId) => {
     try {
-      // Find the message that is being revoked
       const messageToRevoke = messages.find(msg => msg.id === messageId);
       if (!messageToRevoke) {
         console.error("Message not found:", messageId);
         return;
       }
 
-      // Check if the current user is the sender
       if (Number(messageToRevoke.sender) !== Number(userId)) {
         alert("Bạn không thể thu hồi tin nhắn của người khác");
         return;
       }
-
-      console.log("Revoking message:", {
-        messageId,
-        userId,
-        conversationId,
-        message: messageToRevoke
-      });
 
       const response = await MessageAPI.revokeMessage(
         messageId, 
@@ -397,69 +363,45 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         token
       );
 
-      console.log("Revoke response:", response);
-      socket.emit('revoke message',response.revokedMessage)
-      if (response) {
-        // Emit message update through socket
-        updateMessage({
-          id: messageId,
-          status: 'REVOKED',
-          conversation_id: conversationId
-        });
+      socket.emit('revoke message', response.revokedMessage);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                status: "REVOKED",
+                content: "",
+                image_url: null,
+                file_url: null,
+                fileName: msg.message_type === "file" ? "File đã bị thu hồi" : null
+              }
+            : msg
+        )
+      );
 
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === messageId
-              ? {
-                  ...msg,
-                  status: "REVOKED",
-                  content: "",
-                  image_url: null,
-                  file_url: null,
-                  fileName: msg.message_type === "file" ? "File đã bị thu hồi" : null
-                }
-              : msg
-          )
-        );
-
-       
-        if (messageToRevoke.file_url) {
-          const fileNames = JSON.parse(localStorage.getItem('fileNames') || '{}');
-          delete fileNames[messageToRevoke.file_url];
-          localStorage.setItem('fileNames', JSON.stringify(fileNames));
-        }
+      if (messageToRevoke.file_url) {
+        const fileNames = JSON.parse(localStorage.getItem('fileNames') || '{}');
+        delete fileNames[messageToRevoke.file_url];
+        localStorage.setItem('fileNames', JSON.stringify(fileNames));
       }
     } catch (error) {
       console.error("Error revoking message:", error);
-      const errorMessage = error?.response?.data?.message || 
-                          error?.response?.data?.error ||
-                          error.message ||
-                          "Không thể thu hồi tin nhắn. Vui lòng thử lại.";
-      alert(errorMessage);
+      alert(error?.response?.data?.message || "Không thể thu hồi tin nhắn. Vui lòng thử lại.");
     }
   };
 
   const handleDeleteMessage = async (messageId) => {
     try {
-      // Find the message that is being deleted
       const messageToDelete = messages.find(msg => msg.id === messageId);
       if (!messageToDelete) {
         console.error("Message not found:", messageId);
         return;
       }
 
-
       if (Number(messageToDelete.sender) !== Number(userId)) {
         alert("Bạn không thể xóa tin nhắn của người khác");
         return;
       }
-
-      console.log("Deleting message:", {
-        messageId,
-        userId,
-        conversationId,
-        message: messageToDelete
-      });
 
       const response = await MessageAPI.deleteMessage(
         messageId,
@@ -471,37 +413,45 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         token
       );
 
-      console.log("Delete response:", response);
       const socketData = {
         message_id: response.id,
         conversation_id: conversationId,
-      }
+      };
       socket.emit('delete message', socketData);
-      if (response) {
-        // Emit message update through socket
-        updateMessage({
-          id: messageId,
-          status: 'DELETED',
-          conversation_id: conversationId
-        });
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
-        // Remove the message from the messages array
-        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
-
-        // If it was a file message, remove from localStorage
-        if (messageToDelete.file_url) {
-          const fileNames = JSON.parse(localStorage.getItem('fileNames') || '{}');
-          delete fileNames[messageToDelete.file_url];
-          localStorage.setItem('fileNames', JSON.stringify(fileNames));
-        }
+      if (messageToDelete.file_url) {
+        const fileNames = JSON.parse(localStorage.getItem('fileNames') || '{}');
+        delete fileNames[messageToDelete.file_url];
+        localStorage.setItem('fileNames', JSON.stringify(fileNames));
       }
     } catch (error) {
       console.error("Error deleting message:", error);
-      const errorMessage = error?.response?.data?.message ||
-                          error?.response?.data?.error ||
-                          error.message ||
-                          "Không thể xóa tin nhắn. Vui lòng thử lại.";
-      alert(errorMessage);
+      alert(error?.response?.data?.message || "Không thể xóa tin nhắn. Vui lòng thử lại.");
+    }
+  };
+
+  const handleEditMessage = async (messageId) => {
+    try {
+      const messageToEdit = messages.find(msg => msg.id === messageId);
+      if (!messageToEdit) return;
+      if (editingContent.trim() === "") {
+        alert("Nội dung không được để trống");
+        return;
+      }
+      const response = await MessageAPI.updateMessage(
+        messageId,
+        { content: editingContent },
+        token
+      );
+      if (response) {
+        socket.emit('update message', response);
+        setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, content: editingContent } : msg));
+        setEditingMessageId(null);
+        setEditingContent("");
+      }
+    } catch (error) {
+      alert(error?.response?.data?.message || "Cập nhật tin nhắn thất bại");
     }
   };
 
@@ -510,31 +460,18 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     setShowEmojiPicker(false);
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   const isSender = (messageSender) => {
     return Number(messageSender) === Number(userId);
   };
 
-  // Auto scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Handle typing indicator
   const handleTyping = useCallback(() => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
     sendTyping();
-    typingTimeoutRef.current = setTimeout(() => {
-      // Reset typing status after 1 second of no typing
-    }, 1000);
+    typingTimeoutRef.current = setTimeout(() => {}, 1000);
   }, [sendTyping]);
 
-  // Handle message seen
   useEffect(() => {
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
@@ -545,11 +482,159 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     }
   }, [messages, lastSeenMessageId, userId, sendSeen]);
 
-
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
     handleTyping();
   };
+
+  // Scroll to bottom only when conversationId changes (user clicks a conversation)
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+    // Reset justSentMessage để không scroll khi gửi tin nhắn
+    setJustSentMessage(false);
+    // eslint-disable-next-line
+  }, [conversationId]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    let prevScrollHeight = 0;
+    let isFetching = false;
+    const threshold = 100;
+
+    const handleScroll = async () => {
+      if (container.scrollTop < threshold && lastKey && !loading && !isFetching && !isFetchingRef.current) {
+        isFetching = true;
+        prevScrollHeight = container.scrollHeight;
+        
+        try {
+          await fetchMessages(lastKey);
+          requestAnimationFrame(() => {
+            if (container) {
+              const newScrollHeight = container.scrollHeight;
+              container.scrollTop = newScrollHeight - prevScrollHeight;
+            }
+          });
+        } catch (error) {
+          console.error("Error in scroll handler:", error);
+        } finally {
+          isFetching = false;
+        }
+      }
+    };
+
+    let scrollTimeout;
+    const debouncedScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    container.addEventListener('scroll', debouncedScroll);
+    return () => {
+      container.removeEventListener('scroll', debouncedScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [lastKey, loading, fetchMessages]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    let startY = 0;
+    let isDragging = false;
+    let dragDistance = 0;
+    let isLoadingByDrag = false;
+    const threshold = 60;
+    let loadingDiv = null;
+
+    const onMouseDown = (e) => {
+      if (container.scrollTop === 0 && e.button === 0 && !loading && lastKey && !isFetchingRef.current) {
+        isDragging = true;
+        startY = e.clientY;
+        dragDistance = 0;
+      }
+    };
+
+    const onMouseMove = (e) => {
+      if (isDragging && !loading) {
+        dragDistance = e.clientY - startY;
+        if (dragDistance > 0) {
+          if (!loadingDiv) {
+            loadingDiv = document.createElement('div');
+            loadingDiv.className = 'text-center text-muted mb-2';
+            loadingDiv.style.transition = 'height 0.2s';
+            loadingDiv.style.height = '0px';
+            loadingDiv.style.overflow = 'hidden';
+            container.prepend(loadingDiv);
+          }
+          
+          const newHeight = Math.min(dragDistance, threshold);
+          loadingDiv.style.height = newHeight + 'px';
+          
+          if (dragDistance > threshold) {
+            loadingDiv.innerText = 'Thả chuột để tải thêm tin nhắn';
+            loadingDiv.style.color = '#0d6efd';
+          } else {
+            loadingDiv.innerText = 'Kéo xuống để tải thêm tin nhắn...';
+            loadingDiv.style.color = '#6c757d';
+          }
+        }
+      }
+    };
+
+    const onMouseUp = async (e) => {
+      if (isDragging) {
+        isDragging = false;
+        if (dragDistance > threshold && lastKey && !loading && !isLoadingByDrag && !isFetchingRef.current) {
+          isLoadingByDrag = true;
+          if (loadingDiv) {
+            loadingDiv.innerText = 'Đang tải...';
+            loadingDiv.style.color = '#0d6efd';
+          }
+          
+          try {
+            await fetchMessages(lastKey);
+          } catch (error) {
+            console.error('Error loading more messages:', error);
+            if (loadingDiv) {
+              loadingDiv.innerText = 'Lỗi khi tải tin nhắn';
+              loadingDiv.style.color = '#dc3545';
+            }
+          } finally {
+            if (loadingDiv) {
+              setTimeout(() => {
+                loadingDiv.remove();
+                loadingDiv = null;
+              }, 1000);
+            }
+            isLoadingByDrag = false;
+          }
+        } else {
+          if (loadingDiv) {
+            loadingDiv.style.height = '0px';
+            setTimeout(() => {
+              loadingDiv.remove();
+              loadingDiv = null;
+            }, 200);
+          }
+        }
+        dragDistance = 0;
+      }
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+    container.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      container.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      if (loadingDiv) loadingDiv.remove();
+    };
+  }, [lastKey, loading, fetchMessages]);
 
   return (
     <div className="d-flex flex-column h-100 border rounded">
@@ -569,41 +654,75 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         )}
       </div>
 
-      <div className="flex-grow-1 p-3 overflow-y-scroll custom-scroll bg-light" style={{ maxHeight: "500px" }}>
+      <div 
+        id="messagesContainer"
+        ref={messagesContainerRef}
+        className="flex-grow-1 p-3 overflow-y-scroll custom-scroll bg-light" 
+        style={{ maxHeight: "500px", display: "flex", flexDirection: "column" }}
+      >
         {loading && messages.length === 0 ? (
-          <p>Loading...</p>
+          <div className="text-center">
+            <div className="spinner-border" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p className="mt-2">Đang tải tin nhắn...</p>
+          </div>
         ) : messages.length === 0 ? (
           <p className="text-center text-muted">Chưa có tin nhắn nào</p>
         ) : (
           messages.map((msg, idx) => {
             if (msg.status === "DELETED") return null;
-            
-            // console.log("Rendering message:", msg);
+
             const messageType = msg.message_type?.toLowerCase();
             const isImage = messageType === "image" || messageType === "image_text";
             const isFile = messageType === "file";
-            
+            const sender = participants.find(p => p.id === msg.sender);
+            const avatarUrl = sender?.avatar || sender?.UserDetails?.avatar_url || "";
+            const senderName = sender?.fullname || sender?.name || "Unknown User";
+
             return (
               <div
                 key={msg.id || idx}
                 className={`d-flex mb-2 ${isSender(msg.sender) ? "justify-content-end" : "justify-content-start"}`}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  if (msg.id && isSender(msg.sender)) {
+                  if (isSender(msg.sender) && msg.status !== "REVOKED") {
                     setContextMenu({ x: e.clientX, y: e.clientY, messageId: msg.id });
                   }
                 }}
               >
+                {!isSender(msg.sender) && (
+                  <div className="me-2 text-center" style={{ width: 50 }}>
+                    <img
+                      src={avatarUrl || '/default-avatar.png'}
+                      alt="Avatar"
+                      className="rounded-circle mb-1"
+                      style={{ width: "40px", height: "40px", objectFit: "cover" }}
+                    />
+                    <div style={{ fontSize: 12, color: '#555', wordBreak: 'break-word' }}>{senderName}</div>
+                  </div>
+                )}
                 <div
                   className={`p-2 rounded ${isSender(msg.sender) ? "bg-primary text-white" : "bg-secondary text-white"}`}
                   style={{ maxWidth: "70%" }}
                 >
-                  {!isSender(msg.sender) && participants.find(p => p.id === msg.sender) && (
-                    <small className="d-block mb-1 text-white-50">
-                      {participants.find(p => p.id === msg.sender)?.fullname || 'Unknown User'}
-                    </small>
-                  )}
-                  {msg.status === "REVOKED" ? (
+                  {editingMessageId === msg.id ? (
+                    <div className="d-flex align-items-center">
+                      <input
+                        type="text"
+                        className="form-control me-2"
+                        value={editingContent}
+                        onChange={e => setEditingContent(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") handleEditMessage(msg.id);
+                          if (e.key === "Escape") { setEditingMessageId(null); setEditingContent(""); }
+                        }}
+                        autoFocus
+                      />
+                      <button className="btn btn-success btn-sm me-1" onClick={() => handleEditMessage(msg.id)}>Lưu</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setEditingMessageId(null); setEditingContent(""); }}>Hủy</button>
+                    </div>
+                  ) : msg.status === "REVOKED" ? (
                     <div className="d-flex align-items-center">
                       <i className="bi bi-clock-history me-2"></i>
                       <i>
@@ -614,26 +733,28 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                     </div>
                   ) : isImage ? (
                     <div>
-                      <img 
-                        src={msg.image_url || msg.url} 
-                        alt="Sent" 
-                        style={{ 
-                          maxWidth: "100%", 
-                          maxHeight: "300px", 
-                          borderRadius: "10px",
-                          cursor: "pointer",
-                          display: "block",
-                          marginBottom: msg.content ? "8px" : "0"
-                        }}
-                        onClick={() => window.open(msg.image_url || msg.url, '_blank')}
-                        onError={(e) => {
-                          console.error("Image load error for URL:", {
-                            url: msg.url,
-                            image_url: msg.image_url
-                          });
-                          e.target.style.display = 'none';
-                        }}
-                      />
+                      {(msg.image_url || msg.url) ? (
+                        <img
+                          src={msg.image_url || msg.url}
+                          alt="Sent"
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: "300px",
+                            borderRadius: "10px",
+                            cursor: "pointer",
+                            display: "block",
+                            marginBottom: msg.content ? "8px" : "0"
+                          }}
+                          onClick={() => window.open(msg.image_url || msg.url, '_blank')}
+                          onError={(e) => {
+                            console.error("Image load error for URL:", {
+                              url: msg.url,
+                              image_url: msg.image_url
+                            });
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      ) : null}
                       {msg.content && msg.content !== msg.fileName && !msg.content.includes('https://') && (
                         <p className="mb-0 mt-1 text-break">{msg.content}</p>
                       )}
@@ -642,10 +763,10 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                     <div className="d-flex align-items-center">
                       <i className="bi bi-file-earmark-pdf me-2"></i>
                       <div className="d-flex flex-column">
-                        <a 
-                          href={msg.file_url} 
-                          target="_blank" 
-                          rel="noreferrer" 
+                        <a
+                          href={msg.file_url}
+                          target="_blank"
+                          rel="noreferrer"
                           className="text-white text-decoration-none"
                           download={msg.fileName}
                           style={{ wordBreak: "break-word" }}
@@ -658,7 +779,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                             }
                           }}
                         >
-                          {msg.fileName}
+                          {formatFileName(msg.fileName)}
                         </a>
                         {msg.content && msg.content !== msg.fileName && (
                           <small className="text-white-50">{msg.content}</small>
@@ -676,6 +797,14 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
             );
           })
         )}
+        {loading && messages.length > 0 && lastKey && (
+          <div className="text-center text-muted mb-2">
+            <div className="spinner-border spinner-border-sm me-2" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            Đang tải thêm tin nhắn...
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -688,9 +817,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           <i className="bi bi-file-earmark-code-fill"></i>
           <input type="file" hidden onChange={(e) => setSelectedDocument(e.target.files[0])} />
         </label>
-        <button className="btn btn-light me-2 bi bi-emoji-kiss-fill" onClick={() => setShowEmojiPicker((prev) => !prev)}>
-
-        </button>
+        <button className="btn btn-light me-2 bi bi-emoji-kiss-fill" onClick={() => setShowEmojiPicker((prev) => !prev)}></button>
         {showEmojiPicker && (
           <div style={{ position: "absolute", bottom: "60px", left: "20px", zIndex: 1000 }}>
             <Picker onEmojiClick={onEmojiClick} />
@@ -743,6 +870,19 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           }}
           onMouseLeave={() => setContextMenu(null)}
         >
+          <button
+            className="dropdown-item d-flex align-items-center"
+            onClick={() => {
+              setEditingMessageId(contextMenu.messageId);
+              const msg = messages.find(m => m.id === contextMenu.messageId);
+              setEditingContent(msg?.content || "");
+              setContextMenu(null);
+            }}
+          >
+            <i className="bi bi-pencil-square me-2"></i>
+            Chỉnh sửa
+          </button>
+          <div className="dropdown-divider"></div>
           <button
             className="dropdown-item d-flex align-items-center"
             onClick={() => {
