@@ -84,7 +84,7 @@ const UserProfile = ({ userId }) => {
         formData.append('avatar', tempUser.avatarFile);
       }
 
-      const response = await fetch(`http://192.168.1.25:3000/api/userDetails/update/${userDetail.user_id}`, {
+      const response = await fetch(`http://18.141.182.181:3000/api/userDetails/update/${userDetail.user_id}`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,

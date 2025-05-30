@@ -73,7 +73,7 @@ const ConversationApi = {
   },
   async fetchAllConversations(accessToken) {
     try {
-      const response = await axios.get('http://localhost:3000/api/conversations', {
+      const response = await axios.get('http://18.141.182.181:3000/api/conversations', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },

@@ -21,7 +21,7 @@ const getAuthToken = () => {
 
 // Tạo instance Axios
 const axiosInstance = axios.create({
-    baseURL: 'http://localhost:3000/api',
+    baseURL: 'http://18.141.182.181:3000/api',
 });
 
 // Interceptor để thêm header Authorization động

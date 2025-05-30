@@ -75,6 +75,7 @@ const LoginForm = () => {
                                     required
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
+                                    autoComplete="username"
                                     style={{
                                         borderRadius: '8px',
                                         border: '1px solid #ddd',
@@ -91,6 +92,7 @@ const LoginForm = () => {
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
+                                    autoComplete="current-password"
                                     style={{
                                         borderRadius: '8px',
                                         border: '1px solid #ddd',

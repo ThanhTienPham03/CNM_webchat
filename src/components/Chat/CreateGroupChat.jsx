@@ -4,7 +4,7 @@ import GroupChatAPI from '../../api/groupChatAPI';
 import { getFriends } from '../../api/friendAPI';
 import { fetchUserDetail } from '../../api/userDetailsAPI';
 import { Container, Form, Button, ListGroup, Image, Alert } from 'react-bootstrap';
-
+import { getSocket } from '../../utils/socket'; // Giả sử bạn có hàm này để lấy socket
 const CreateGroupChat = ({ userId, accessToken, onClose }) => {
   const navigate = useNavigate();
   const [groupName, setGroupName] = useState('');
@@ -16,7 +16,9 @@ const CreateGroupChat = ({ userId, accessToken, onClose }) => {
 
   const MIN_MEMBERS = 2; // Số thành viên tối thiểu (không tính người tạo)
 
+  const socket = getSocket();
   useEffect(() => {
+
     const fetchFriendsWithDetails = async () => {
       try {
         const friendsData = await getFriends(userId);
@@ -101,6 +103,10 @@ const CreateGroupChat = ({ userId, accessToken, onClose }) => {
       
       // Log response từ API
       console.log('API Response:', response);
+
+        console.log('Group created successfully:', response.data);
+        socket.emit('create group', response.data)
+      
 
       // Kiểm tra response chi tiết hơn
       if (!response) {

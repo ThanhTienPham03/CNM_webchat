@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'http://18.141.182.181:3000';
 
 export const createUserDetail = async (userData, token) => {;
     const config = {

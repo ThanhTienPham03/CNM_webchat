@@ -12,7 +12,7 @@ const GroupChatAPI = {
     try {
       // Gửi request tạo nhóm với dữ liệu JSON
       const response = await axios.post(
-        `${API_BASE_URL}/conversations/add_group`,
+        `${API_BASE_URL}/add_group`,
         groupData,
         {
           headers: {

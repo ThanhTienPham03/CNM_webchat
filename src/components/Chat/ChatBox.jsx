@@ -33,11 +33,12 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [shouldRefresh, setShouldRefresh] = useState(false);
   const [justSentMessage, setJustSentMessage] = useState(false);
+  const [viewingImageUrl, setViewingImageUrl] = useState(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const isFetchingRef = useRef(false); // Cờ kiểm soát gọi API
-  const baseURL = "http://localhost:3000";
+  const baseURL = "http://18.141.182.181:3000";
   const { 
     socket, 
     sendMessage, 
@@ -196,7 +197,34 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
       const res = await axios.get(`${baseURL}/api/conversations/${conversationId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setParticipants(normalizeParticipants(res.data.participants));
+      let rawParticipants = normalizeParticipants(res.data.participants);
+      // Nếu participant là object có fullname/avatar_url thì dùng luôn, nếu không thì fetch từng user
+      const userDetails = await Promise.all(
+        rawParticipants.map(async (p) => {
+          if (typeof p === 'object' && (p.fullname || p.avatar_url)) {
+            return {
+              id: p.id,
+              fullname: p.fullname || p.name || `Unknown User (ID: ${p.id})`,
+              avatar_url: p.avatar_url || p.avatar || '/default-avatar.png',
+            };
+          }
+          // Nếu chỉ là ID, fetch user
+          try {
+            const userRes = await axios.get(`${baseURL}/api/users/${p}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const user = userRes.data;
+            return {
+              id: user.id || p,
+              fullname: user.fullname || user.name || `Unknown User (ID: ${p})`,
+              avatar_url: user.avatar_url || user.avatar || '/default-avatar.png',
+            };
+          } catch (e) {
+            return { id: p, fullname: `Unknown User (ID: ${p})`, avatar_url: '/default-avatar.png' };
+          }
+        })
+      );
+      setParticipants(userDetails);
     } catch (error) {
       console.error("Error fetching participants:", error);
     }
@@ -305,9 +333,11 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         
         formData.append("file", file);
         formData.append("type", type);
-        formData.append("content", newMessage || file.name);
+        formData.append("content", newMessage );
         
         const response = await MessageAPI.sendImageAndText(formData, token);
+        socket.emit('send message', response.message);
+        socket.emit('update conversation', response.updatedConversation)
         if (response) {
           if (response.file_url) {
             storeFileName(response.file_url, file.name);
@@ -325,6 +355,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         };
         const response = await MessageAPI.sendMessage(messageData, token);
         socket.emit('send message', response.message);
+        socket.emit('update conversation', response.updatedConversation)
         setShouldRefresh(true); // Kích hoạt làm mới một lần
       }
   
@@ -439,19 +470,31 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         alert("Nội dung không được để trống");
         return;
       }
+      // Chỉ gửi content, tránh gửi dư thừa trường backend không cần
       const response = await MessageAPI.updateMessage(
         messageId,
-        { content: editingContent },
+        {
+          conversation_id: conversationId,
+          user_id: Number(userId),
+          content: editingContent
+        },
         token
       );
       if (response) {
-        socket.emit('update message', response);
-        setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, content: editingContent } : msg));
+        socket.emit('update message', response); // Gửi socket event để các client khác cập nhật
+        setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, content: editingContent, status: response.status } : msg));
         setEditingMessageId(null);
         setEditingContent("");
       }
     } catch (error) {
-      alert(error?.response?.data?.message || "Cập nhật tin nhắn thất bại");
+      // Hiển thị lỗi chi tiết hơn nếu có
+      if (error?.response?.data?.message) {
+        alert(error.response.data.message);
+      } else if (error?.message) {
+        alert(error.message);
+      } else {
+        alert("Cập nhật tin nhắn thất bại");
+      }
     }
   };
 
@@ -487,15 +530,13 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     handleTyping();
   };
 
-  // Scroll to bottom only when conversationId changes (user clicks a conversation)
+  // Scroll to bottom when conversationId changes or messages loaded for that conversation
   useEffect(() => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && messages.length > 0) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-    // Reset justSentMessage để không scroll khi gửi tin nhắn
     setJustSentMessage(false);
-    // eslint-disable-next-line
-  }, [conversationId]);
+  }, [conversationId, messages.length]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -636,16 +677,86 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
     };
   }, [lastKey, loading, fetchMessages]);
 
+  const getAvatarUrl = (sender) => {
+    if (!sender) return '/OIP.png';
+    if (sender.avatar_url) return sender.avatar_url;
+    if (sender.UserDetails && sender.UserDetails.avatar_url) return sender.UserDetails.avatar_url;
+    return '/OIP.png';
+  };
+
+  // Thêm hàm fetchUserDetailIfNeeded ở ngoài render
+  const fetchUserDetailIfNeeded = useCallback(async (userIdToFetch) => {
+    if (!userIdToFetch || participants.some(p => Number(p.id) === Number(userIdToFetch))) return;
+    try {
+      const res = await axios.get(`${baseURL}/api/userDetails/${userIdToFetch}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const user = res.data;
+      setParticipants(prev => {
+        if (prev.some(p => Number(p.id) === Number(user.id))) return prev;
+        return [
+          ...prev,
+          {
+            id: user.id,
+            fullname: user.fullname || user.name || `Unknown User (ID: ${user.id})`,
+            avatar_url: user.avatar_url || user.avatar || '/default-avatar.png',
+          },
+        ];
+      });
+    } catch (e) {
+      // Không làm gì nếu lỗi
+    }
+  }, [participants, token, baseURL]);
+
+  // Fetch user detail cho các sender chưa có trong participants
+  useEffect(() => {
+    const missingUserIds = messages
+      .map(m => m.sender)
+      .filter(senderId => senderId && !participants.some(p => Number(p.id) === Number(senderId)));
+    if (missingUserIds.length > 0) {
+      missingUserIds.forEach(uid => fetchUserDetailIfNeeded(uid));
+    }
+  }, [messages, participants, fetchUserDetailIfNeeded]);
+
+  // Debounce handleSend để chống spam khi nhấn Enter liên tục
+  const debouncedHandleSend = useRef(null);
+  useEffect(() => {
+    debouncedHandleSend.current = debounce(() => {
+      if (!loading) handleSend();
+    }, 500); // 500ms giữa 2 lần gửi
+  }, [loading, handleSend]);
+
   return (
     <div className="d-flex flex-column h-100 border rounded">
       <div className="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
-        <div>
-          <h5 className="mb-0">{conversationName || "Chọn cuộc trò chuyện"}</h5>
+        <div className="d-flex align-items-center">
+          {/* Hiển thị avatar của đối phương (nếu là chat 1-1) hoặc avatar nhóm */}
+          {participants.length === 2 && (() => {
+            const other = participants.find(p => String(p.id) !== String(userId));
+            return other ? (
+              <img
+                key={other.id}
+                src={other.avatar_url || '/OIP.png'}
+                alt="Avatar"
+                className="rounded-circle me-2"
+                style={{ width: 40, height: 40, objectFit: 'cover', background: '#fff' }}
+                onError={e => { e.target.src = '/OIP.png'; }}
+              />
+            ) : null;
+          })()}
           {participants.length > 2 && (
-            <small className="text-white-50">
-              {participants.length} thành viên
-            </small>
+            <img
+              src={'/OIP.png'}
+              alt="Group Avatar"
+              className="rounded-circle me-2"
+              style={{ width: 40, height: 40, objectFit: 'cover', background: '#fff' }}
+              onError={e => { e.target.src = '/OIP.png'; }}
+            />
           )}
+          <div>
+            <h5 className="mb-0">{conversationName || "Chọn cuộc trò chuyện"}</h5>
+            
+          </div>
         </div>
         {isTyping && typingUser && (
           <small className="text-white-50">
@@ -676,9 +787,14 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
             const messageType = msg.message_type?.toLowerCase();
             const isImage = messageType === "image" || messageType === "image_text";
             const isFile = messageType === "file";
-            const sender = participants.find(p => p.id === msg.sender);
-            const avatarUrl = sender?.avatar || sender?.UserDetails?.avatar_url || "";
-            const senderName = sender?.fullname || sender?.name || "Unknown User";
+            const sender = participants.find(p => Number(p.id) === Number(msg.sender));
+            const avatarUrl = sender && sender.avatar_url ? sender.avatar_url : '/OIP.png';
+            let senderName = 'Unknown User';
+            if (sender) {
+              senderName = sender.fullname || sender.name || `Unknown User (ID: ${sender.id ?? msg.sender})`;
+            } else if (msg.sender !== undefined && msg.sender !== null) {
+              senderName = `Unknown User (ID: ${msg.sender})`;
+            }
 
             return (
               <div
@@ -691,15 +807,16 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                   }
                 }}
               >
+                {/* Hiển thị avatar user cho tin nhắn không phải của mình */}
                 {!isSender(msg.sender) && (
-                  <div className="me-2 text-center" style={{ width: 50 }}>
+                  <div className="me-2 text-center" style={{ minWidth: 40, maxWidth: 40 }}>
                     <img
-                      src={avatarUrl || '/default-avatar.png'}
+                      src={avatarUrl}
                       alt="Avatar"
                       className="rounded-circle mb-1"
-                      style={{ width: "40px", height: "40px", objectFit: "cover" }}
+                      style={{ width: "40px", height: "40px", objectFit: "cover", background: "#fff" }}
+                      onError={e => { e.target.src = '/OIP.png'; }}
                     />
-                    <div style={{ fontSize: 12, color: '#555', wordBreak: 'break-word' }}>{senderName}</div>
                   </div>
                 )}
                 <div
@@ -714,8 +831,12 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                         value={editingContent}
                         onChange={e => setEditingContent(e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === "Enter") handleEditMessage(msg.id);
-                          if (e.key === "Escape") { setEditingMessageId(null); setEditingContent(""); }
+                          if (e.key === "Enter") {
+                            handleEditMessage(msg.id);
+                          } else if (e.key === "Escape") {
+                            setEditingMessageId(null);
+                            setEditingContent("");
+                          }
                         }}
                         autoFocus
                       />
@@ -745,7 +866,7 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
                             display: "block",
                             marginBottom: msg.content ? "8px" : "0"
                           }}
-                          onClick={() => window.open(msg.image_url || msg.url, '_blank')}
+                          onClick={() => setViewingImageUrl(msg.image_url || msg.url)}
                           onError={(e) => {
                             console.error("Image load error for URL:", {
                               url: msg.url,
@@ -829,7 +950,11 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           placeholder="Type a message..."
           value={newMessage}
           onChange={handleInputChange}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !loading) {
+              debouncedHandleSend.current();
+            }
+          }}
         />
         <button className="btn btn-primary" onClick={handleSend} disabled={!conversationId || loading}>
           <i className="bi bi-send"></i>
@@ -872,6 +997,30 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
         >
           <button
             className="dropdown-item d-flex align-items-center"
+            onClick={async () => {
+              const msg = messages.find(m => m.id === contextMenu.messageId);
+              if (msg) {
+                let text = msg.content;
+                if ((!text || text.trim() === "") && msg.message_type === "image") text = msg.image_url || msg.url;
+                if ((!text || text.trim() === "") && msg.message_type === "file") text = msg.file_url;
+                if (text) {
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    // Optional: thông báo nhỏ
+                  } catch {
+                    alert("Không thể sao chép vào clipboard");
+                  }
+                }
+              }
+              setContextMenu(null);
+            }}
+          >
+            <i className="bi bi-clipboard me-2"></i>
+            Sao chép
+          </button>
+          <div className="dropdown-divider"></div>
+          <button
+            className="dropdown-item d-flex align-items-center"
             onClick={() => {
               setEditingMessageId(contextMenu.messageId);
               const msg = messages.find(m => m.id === contextMenu.messageId);
@@ -908,8 +1057,166 @@ const ChatBox = ({ conversationId, conversationName, userId, token }) => {
           </button>
         </div>
       )}
+
+      {viewingImageUrl && (
+        <div
+          className="modal show d-block"
+          tabIndex="-1"
+          style={{ background: "rgba(0,0,0,0.7)", position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setViewingImageUrl(null)}
+        >
+          <ZoomableImageModal imageUrl={viewingImageUrl} onClose={() => setViewingImageUrl(null)} />
+        </div>
+      )}
     </div>
   );
 };
 
 export default ChatBox;
+
+// Thêm component ZoomableImageModal ở cuối file
+const ZoomableImageModal = ({ imageUrl, onClose }) => {
+  const [zoom, setZoom] = useState(1);
+  const [drag, setDrag] = useState({ x: 0, y: 0, startX: 0, startY: 0, isDragging: false });
+  const imgRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // Zoom bằng chuột
+  const handleWheel = (e) => {
+    e.preventDefault();
+    setZoom(z => {
+      let next = e.deltaY < 0 ? Math.min(z + 0.1, 3) : Math.max(z - 0.1, 0.2);
+      return Math.round(next * 100) / 100;
+    });
+  };
+
+  // Kéo ảnh khi zoom lớn hơn 1
+  const handleMouseDown = (e) => {
+    if (zoom <= 1) return;
+    setDrag(d => ({ ...d, isDragging: true, startX: e.clientX - d.x, startY: e.clientY - d.y }));
+    document.body.style.cursor = 'grab';
+  };
+  const handleMouseMove = (e) => {
+    if (!drag.isDragging) return;
+    setDrag(d => ({ ...d, x: e.clientX - d.startX, y: e.clientY - d.startY }));
+  };
+  const handleMouseUp = () => {
+    if (drag.isDragging) {
+      setDrag(d => ({ ...d, isDragging: false }));
+      document.body.style.cursor = '';
+    }
+  };
+  useEffect(() => {
+    if (drag.isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [drag.isDragging]);
+
+  // Reset zoom và vị trí khi đổi ảnh
+  useEffect(() => {
+    setZoom(1);
+    setDrag({ x: 0, y: 0, startX: 0, startY: 0, isDragging: false });
+  }, [imageUrl]);
+
+  // Đảm bảo ảnh không bị kéo ra ngoài quá nhiều
+  useEffect(() => {
+    if (zoom <= 1) setDrag({ x: 0, y: 0, startX: 0, startY: 0, isDragging: false });
+  }, [zoom]);
+
+  // Phím tắt ESC để đóng
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  // Nút zoom
+  const handleZoomIn = () => setZoom(z => Math.min(z + 0.2, 3));
+  const handleZoomOut = () => setZoom(z => Math.max(z - 0.2, 0.2));
+  const handleReset = () => { setZoom(1); setDrag({ x: 0, y: 0, startX: 0, startY: 0, isDragging: false }); };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "relative",
+        maxWidth: "90vw",
+        maxHeight: "90vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        margin: "auto",
+        marginTop: "70px",
+        background: "#222",
+        borderRadius: 16,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+        overflow: "hidden"
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      <img
+        ref={imgRef}
+        src={imageUrl}
+        alt="Full size"
+        style={{
+          maxWidth: "100%",
+          maxHeight: "80vh",
+          borderRadius: "10px",
+          background: "#fff",
+          display: "block",
+          margin: "auto",
+          boxShadow: "0 2px 16px rgba(0,0,0,0.25)",
+          cursor: zoom > 1 ? (drag.isDragging ? 'grabbing' : 'grab') : 'auto',
+          transform: `scale(${zoom}) translate(${drag.x / zoom}px, ${drag.y / zoom}px)`,
+          transition: drag.isDragging ? 'none' : 'transform 0.2s',
+          userSelect: 'none',
+        }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        draggable={false}
+      />
+      <button
+        onClick={onClose}
+        style={{ position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, fontSize: 22, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
+        aria-label="Đóng"
+      >
+        ×
+      </button>
+      <a
+        href={imageUrl}
+        download={(() => {
+          try {
+            const urlParts = imageUrl.split("/");
+            let fileName = urlParts[urlParts.length - 1].split('?')[0];
+            return decodeURIComponent(fileName) || 'image.jpg';
+          } catch {
+            return 'image.jpg';
+          }
+        })()}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ position: "absolute", top: 10, left: 10, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, fontSize: 18, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.2)", display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+        title="Tải ảnh này"
+      >
+        <i className="bi bi-download"></i>
+      </a>
+      <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 12, background: "rgba(0,0,0,0.4)", borderRadius: 24, padding: "6px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>
+        <button className="btn btn-light btn-sm" style={{ fontWeight: 700, fontSize: 18, width: 32, height: 32, borderRadius: "50%" }} onClick={handleZoomOut} title="Thu nhỏ">−</button>
+        <button className="btn btn-light btn-sm" style={{ fontWeight: 700, fontSize: 15, width: 40, borderRadius: 16 }} onClick={handleReset} title="Về mặc định">100%</button>
+        <button className="btn btn-light btn-sm" style={{ fontWeight: 700, fontSize: 18, width: 32, height: 32, borderRadius: "50%" }} onClick={handleZoomIn} title="Phóng to">+</button>
+      </div>
+      <div style={{ position: "absolute", bottom: 8, right: 24, color: "#fff", fontSize: 13, opacity: 0.7, textShadow: "0 1px 4px #000" }}>
+        <span>{Math.round(zoom * 100)}%</span>
+      </div>
+    </div>
+  );
+};
+

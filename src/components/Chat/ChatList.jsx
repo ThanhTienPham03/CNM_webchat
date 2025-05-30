@@ -49,7 +49,8 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
             const memberDetails = await Promise.all(memberDetailsPromises);
             
             // Join conversation room
-            socket.emit('join conversation', { conversation_id: conv.id });
+            socket.emit('group chat', { conversation_id: conv.id });
+            
 
             return {
               ...conv,
@@ -74,7 +75,7 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
             const otherUserDetail = await fetchUserDetail(otherUserId, accessToken);
             
             // Join conversation room
-            socket.emit('join conversation', { conversation_id: conv.id });
+            socket.emit('single chat', { conversation_id: conv.id });
 
             return {
               ...conv,
@@ -113,6 +114,16 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
 
   useEffect(() => {
     getListConversation();
+
+    socket.on('group created', (data) => {
+      console.log('New group created:', data);
+      getListConversation(); // Cập nhật danh sách cuộc trò chuyện khi có nhóm mới
+    });
+
+    socket.on('conversation updated', (data) => {
+      console.log('conversation updated:', data);
+      getListConversation(); 
+    });
   }, [getListConversation]);
 
   const formatTime = (isoString) => {
@@ -288,7 +299,7 @@ const ChatList = ({ userId, accessToken, onConversationSelect }) => {
         </div>
       )}
 
-      <style jsx>{`
+      <style >{`
         @keyframes slideIn {
           from {
             transform: translateX(-100%);

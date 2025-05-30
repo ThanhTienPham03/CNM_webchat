@@ -1,0 +1,9 @@
+<script>
+  // Redirect all 404s to index.html for SPA routing on GitHub Pages
+  var path = location.pathname.replace(/^\/+/,'').replace(/^(CNM_webchat\/)?/, '');
+  location.replace('/CNM_webchat/?redirect=/' + path + location.search + location.hash);
+</script>
+<noscript>
+  <h1>404 Not Found</h1>
+  <p>This page could not be found. Please return to the <a href="/CNM_webchat/">home page</a>.</p>
+</noscript>

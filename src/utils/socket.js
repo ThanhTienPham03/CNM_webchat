@@ -4,7 +4,7 @@ let socket = null;
 
 export const initializeSocket = () => {
   if (!socket) {
-    socket = io('http://localhost:3000', {
+    socket = io('http://18.141.182.181:3000', {
       transports: ['websocket'],
     });
   }
